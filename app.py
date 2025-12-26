@@ -1877,40 +1877,84 @@ def build_app() -> Dash:
         dff = df.sort_values("abs_log2_fc", ascending=False).head(
             int(q10_top_n or 100)
         )
+        import plotly.graph_objects as go
+        import numpy as np
 
-        fig = px.bar(
-            dff,
-            x="feature",
-            y="log2_fc",
-            color="driver",
-            hover_data=[
-                "Hepar_intensity",
-                "Hepeel_intensity",
-                "direction",
-                "name",
-                "molecularFormula",
-                "pubchemids",
-            ],
-            labels={
-                "feature": "Feature ID",
-                "log2_fc": "log2(Hepar / Hepeel)",
-                "driver": "Driver",
-            },
+        # Dense x positions starting at 0 (very close spacing)
+        x_pos = np.arange(len(dff)) * 0.25  # smaller factor = closer sticks
+
+        fig = go.Figure()
+
+        # Vertical sticks (from 0 to log2_fc)
+        fig.add_trace(
+            go.Scatter(
+                x=x_pos,
+                y=dff["log2_fc"],
+                mode="lines",
+                line=dict(width=2, color="rgba(120,120,120,0.8)"),
+                hoverinfo="skip",
+                showlegend=False,
+            )
         )
+
+        # Dots at the end of each stick
+        fig.add_trace(
+            go.Scatter(
+                x=x_pos,
+                y=dff["log2_fc"],
+                mode="markers",
+                marker=dict(
+                    size=7,
+                    color=dff["log2_fc"],
+                    colorscale="RdBu",
+                    cmin=-abs(dff["log2_fc"]).max(),
+                    cmax=abs(dff["log2_fc"]).max(),
+                    showscale=True,
+                    colorbar=dict(title="log2FC"),
+                ),
+                text=dff["feature"],
+                customdata=dff[
+                    [
+                        "Hepar_intensity",
+                        "Hepeel_intensity",
+                        "direction",
+                        "name",
+                    ]
+                ].values,
+                hovertemplate=
+                "<b>%{text}</b><br>" +
+                "log2FC: %{y:.2f}<br>" +
+                "Hepar intensity: %{customdata[0]}<br>" +
+                "Hepeel intensity: %{customdata[1]}<br>" +
+                "Direction: %{customdata[2]}<br>" +
+                "Name: %{customdata[3]}<extra></extra>",
+                showlegend=False,
+            )
+        )
+
+        # Zero reference line
+        fig.add_hline(
+            y=0,
+            line_width=1,
+            line_dash="dash",
+            line_color="rgba(150,150,150,0.6)",
+        )
+
+        # Layout: origin-aligned, compact, auto-fit
         fig.update_layout(
-            margin=dict(l=20, r=20, t=40, b=80),
-            xaxis_tickangle=45,
-            shapes=[
-                # horizontal line at 0
-                dict(
-                    type="line",
-                    x0=-0.5,
-                    x1=len(dff) - 0.5,
-                    y0=0,
-                    y1=0,
-                    line=dict(color="rgba(150,150,150,0.6)", width=1, dash="dash"),
-                )
-            ],
+            autosize=True,
+            height=520,
+            margin=dict(l=20, r=20, t=40, b=40),
+            xaxis=dict(
+                title="Features (ranked by |log2FC|)",
+                showticklabels=False,  # hide crowded labels
+                range=[-0.1, x_pos[-1] + 0.3],
+                zeroline=False,
+            ),
+            yaxis=dict(
+                title="log2(Hepar / Hepeel)",
+                zeroline=False,
+            ),
         )
 
         columns = [
