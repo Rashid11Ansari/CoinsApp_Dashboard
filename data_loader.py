@@ -120,18 +120,122 @@ def _read_features_txt(path: Path) -> pd.DataFrame:
 
 
 def _read_summary_annotation_xlsx(path: Path) -> pd.DataFrame:
+    """Read the summary+annotation table.
+
+    Supports:
+      - .xlsx/.xls (Excel)
+      - .txt/.tsv (tab-delimited)
+      - .csv (comma-delimited)
+
+    Must contain a 'feature' column.
     """
-    Reads Product_features_summary_annotation.xlsx robustly.
-    Tries header rows until 'feature' exists.
-    """
+    suffix = path.suffix.lower()
+
+    # ---- delimited text ----
+    if suffix in {".txt", ".tsv", ".csv", ".text"}:
+        # Some exports are not truly tab-delimited; try to sniff delimiter.
+        # Also handle UTF-8 BOM via utf-8-sig.
+        sample = ""
+        try:
+            sample = path.read_text(encoding="utf-8-sig", errors="replace")[:50_000]
+        except Exception:
+            pass
+
+        # Candidate separators: tab, comma, semicolon, pipe
+        seps = ["\t", ",", ";", "|"]
+        # Default based on extension
+        default_sep = "\t" if suffix in {".txt", ".tsv", ".text"} else ","
+
+        def _try_read(sep: str, hdr: int) -> pd.DataFrame | None:
+            try:
+                df0 = pd.read_csv(path, sep=sep, header=hdr, engine="python", encoding="utf-8-sig")
+                return df0
+            except Exception:
+                return None
+
+        # Prefer the sep that yields the most columns (a good proxy for correct delimiter)
+        best_df = None
+        best_cols = 0
+        best_sep = None
+        best_hdr = None
+
+        for hdr in [0, 1, 2, 3]:
+            # If we have sample text, choose a likely sep by counting occurrences in the header line
+            sep_order = seps
+            if sample:
+                header_line = sample.splitlines()[hdr] if len(sample.splitlines()) > hdr else sample.splitlines()[0]
+                counts = {s: header_line.count(s) for s in seps}
+                sep_order = sorted(seps, key=lambda s: counts[s], reverse=True)
+                # Ensure default sep is tried early too
+                if default_sep in sep_order:
+                    sep_order.remove(default_sep)
+                    sep_order.insert(0, default_sep)
+
+            for sep in sep_order:
+                df = _try_read(sep, hdr)
+                if df is None:
+                    continue
+                # normalize column names
+                df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
+                ncols = len(df.columns)
+                if ncols > best_cols:
+                    best_df, best_cols, best_sep, best_hdr = df, ncols, sep, hdr
+
+        if best_df is None:
+            raise ValueError("Failed to read the summary annotation text file with common delimiters.")
+
+        df = best_df
+
+        # exact match
+        if "feature" in df.columns:
+            df["feature"] = df["feature"].astype(str)
+            return df
+
+        # case-insensitive / common variants
+        lower_map = {str(c).strip().lower(): c for c in df.columns}
+        for key in ["feature", "feature_id", "featureid", "features", "id", "rowid", "row_id"]:
+            if key in lower_map:
+                df = df.rename(columns={lower_map[key]: "feature"})
+                df["feature"] = df["feature"].astype(str)
+                return df
+
+        # substring match
+        for c in df.columns:
+            if "feature" in str(c).strip().lower():
+                df = df.rename(columns={c: "feature"})
+                df["feature"] = df["feature"].astype(str)
+                return df
+
+        # heuristic: first column looks like MS feature IDs
+        if len(df.columns) >= 1:
+            first = df.columns[0]
+            s = df[first].astype(str)
+            looks_like_feature = (
+                s.str.match(r"^[A-Za-z]+_\d+", na=False).mean() >= 0.5
+                or s.str.startswith("N_", na=False).mean() >= 0.5
+            )
+            if looks_like_feature:
+                df = df.rename(columns={first: "feature"})
+                df["feature"] = df["feature"].astype(str)
+                return df
+
+        # If still not found, raise with helpful debugging info
+        preview_cols = list(df.columns)[:30]
+        raise ValueError(
+            "Could not find a 'feature' column in the summary annotation text file. "
+            f"Detected sep={best_sep!r}, header={best_hdr}. "
+            f"First columns: {preview_cols}"
+        )
+
+    # ---- Excel ----
     for hdr in [0, 1, 2, 3]:
         df = pd.read_excel(path, sheet_name=0, header=hdr)
         if "feature" in df.columns:
             df["feature"] = df["feature"].astype(str)
-            # strip whitespace from column names
             df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
             return df
-    raise ValueError("Could not find a 'feature' column in Product_features_summary_annotation.xlsx (check header row / sheet).")
+
+    raise ValueError("Could not find a 'feature' column in the summary annotation file (Excel headers tried 0-3).")
 
 
 def _build_component_groups(summary_df: pd.DataFrame) -> dict:
@@ -189,7 +293,38 @@ def load_all(data_dir: str | Path | None = None) -> dict:
     hepar_feat = _read_features_txt(base / "Hepar_features.txt")
     hepeel_feat = _read_features_txt(base / "Hepeel_features.txt")
 
-    summary = _read_summary_annotation_xlsx(base / "Product_features_summary_annotation.xlsx")
+    # summary/annotation table (file name may change)
+    summary_candidates = [
+        # newer merged summary files (names vary)
+        "Product_feature_merge_updated.text",
+        "Product_features_merge_updated.txt",
+        "Product_features_merge_updated.tsv",
+        "Product_features_merge_updated.csv",
+
+        # older summary/annotation exports
+        "Product_features_summary_annotation.xlsx",
+        "Product_features_summary_annotation.xls",
+        "Product_features_summary_annotation.txt",
+        "Product_features_summary_annotation.tsv",
+    ]
+
+    summary_path = None
+    for fname in summary_candidates:
+        p = base / fname
+        if p.exists():
+            summary_path = p
+            break
+
+    if summary_path is None:
+        existing = sorted([p.name for p in base.glob("*")])
+        raise FileNotFoundError(
+            "Could not find a summary/annotation file in the data folder. "
+            f"Tried: {summary_candidates}. "
+            f"Data folder: {base}. "
+            f"Files present: {existing}"
+        )
+
+    summary = _read_summary_annotation_xlsx(summary_path)
     groups = _build_component_groups(summary)
 
     # authority lists
