@@ -119,7 +119,7 @@ def _read_features_txt(path: Path) -> pd.DataFrame:
     return df
 
 
-def _read_summary_annotation_xlsx(path: Path) -> pd.DataFrame:
+def _read_summary_annotation_txt(path: Path) -> pd.DataFrame:
     """Read the summary+annotation table.
 
     Supports:
@@ -296,16 +296,10 @@ def load_all(data_dir: str | Path | None = None) -> dict:
     # summary/annotation table (file name may change)
     summary_candidates = [
         # newer merged summary files (names vary)
-        "Product_feature_merge_updated.text",
         "Product_features_merge_updated.txt",
         "Product_features_merge_updated.tsv",
         "Product_features_merge_updated.csv",
 
-        # older summary/annotation exports
-        "Product_features_summary_annotation.xlsx",
-        "Product_features_summary_annotation.xls",
-        "Product_features_summary_annotation.txt",
-        "Product_features_summary_annotation.tsv",
     ]
 
     summary_path = None
@@ -324,7 +318,7 @@ def load_all(data_dir: str | Path | None = None) -> dict:
             f"Files present: {existing}"
         )
 
-    summary = _read_summary_annotation_xlsx(summary_path)
+    summary = _read_summary_annotation_txt(summary_path)
     groups = _build_component_groups(summary)
 
     # authority lists

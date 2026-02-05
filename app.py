@@ -5,7 +5,7 @@ import re
 
 import pandas as pd
 import numpy as np
-from dash import Dash, dcc, Input, Output
+from dash import Dash, dcc, Input, Output, dash_table
 import plotly.express as px
 import plotly.io as pio
 
@@ -18,6 +18,84 @@ from layout import build_layout
 APP_TITLE = "MS Feature Explorer (Origin-aware)"
 
 _PUBCHEM_RE = re.compile(r"\d+")
+
+# -----------------------------
+# Q8 configuration
+# -----------------------------
+Q8_HEPAR_FINAL_COL = "Hepar.comp.Ampoules..Bulk.mat.52324."
+Q8_HEPEEL_FINAL_COL = "Hepeel.ampoule.solution..Bulk"
+
+Q8_HEPAR_INGREDIENTS = [
+    "Avena sativa",
+    "Chelidonium majus",
+    "Cinchona pubescens",
+    "Cynara scolymus",
+    "Lycopodium clavatum",
+    "Silybum marianum",
+    "Taraxacum officinale",
+    "Veratrum album",
+    "Colon suis",
+    "Duodenum suis",
+    "Hepar suis",
+    "Pankreas suis",
+    "Thymus suis",
+    "Vesica fellea suis",
+]
+
+Q8_HEPEEL_INGREDIENTS = [
+    "Chelidonium majus",
+    "Cinchona pubescens",
+    "Citrullus colocynthis",
+    "Lycopodium clavatum",
+    "Myristica fragrans",
+    "Silybum marianum",
+    "Veratrum album",
+]
+
+
+def _norm_col(s: str) -> str:
+    s = str(s).strip().lower()
+    s = s.replace(".", " ").replace("_", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _find_col(df: pd.DataFrame, target: str) -> str:
+    """Best-effort column match: exact normalized match first, then substring match."""
+    t = _norm_col(target)
+    col_norm = {c: _norm_col(c) for c in df.columns}
+
+    for c, cn in col_norm.items():
+        if cn == t:
+            return c
+
+    for c, cn in col_norm.items():
+        if t in cn:
+            return c
+
+    raise KeyError(f"Q8: could not find column matching '{target}'")
+
+
+def _find_cols_for_ingredients(df: pd.DataFrame, ingredients: list[str]) -> list[str]:
+    cols: list[str] = []
+    for ing in ingredients:
+        try:
+            cols.append(_find_col(df, ing))
+        except KeyError:
+            # ignore missing; we'll handle with whatever we found
+            pass
+    return cols
+
+
+def _q8_state(prod: float, comp_max: float, amp_thr: float) -> str:
+    if pd.isna(prod) or pd.isna(comp_max) or comp_max <= 0:
+        return "unknown" if pd.isna(comp_max) or comp_max <= 0 else "unchanged"
+    ratio = prod / comp_max if comp_max else float("nan")
+    if ratio >= amp_thr:
+        return "amplified"
+    if ratio <= (1.0 / amp_thr):
+        return "attenuated"
+    return "unchanged"
 
 
 def extract_pubchem_cids(val) -> list[str]:
@@ -307,11 +385,11 @@ def build_app() -> Dash:
         Output("view_explore", "style"),
         Output("view_q3", "style"),
         Output("view_q4q5", "style"),
+        Output("view_q8", "style"),
         Output("set_mode", "value"),
         Output("origin_filter", "value"),
         Output("q4q5_select", "value"),
         Input("page_select", "value"),
-
     )
     def switch_view(page_select: str):
         show = {"display": "block"}
@@ -323,16 +401,20 @@ def build_app() -> Dash:
         set_mode_val = q4q5_val
 
         if not page_select:
-            return show, hide, hide, set_mode_val, origin_val, q4q5_val
+            return show, hide, hide, hide, set_mode_val, origin_val, q4q5_val
 
         # Explore modes
         if page_select.startswith("explore::"):
             origin_val = page_select.split("::", 1)[1]
-            return show, hide, hide, set_mode_val, origin_val, q4q5_val
+            return show, hide, hide, hide, set_mode_val, origin_val, q4q5_val
 
         # Q3
         if page_select == "q3":
-            return hide, show, hide, set_mode_val, origin_val, q4q5_val
+            return hide, show, hide, hide, set_mode_val, origin_val, q4q5_val
+
+        # Q8
+        if page_select == "q8":
+            return hide, hide, hide, show, set_mode_val, origin_val, q4q5_val
 
         # Q4 / Q5
         if page_select == "q4":
@@ -341,8 +423,232 @@ def build_app() -> Dash:
             q4q5_val = "product_only"
 
         set_mode_val = q4q5_val
-        return hide, hide, show, set_mode_val, origin_val, q4q5_val
+        return hide, hide, show, hide, set_mode_val, origin_val, q4q5_val
+    @app.callback(
+        Output("q8_table", "data"),
+        Output("q8_table", "columns"),
+        Output("q8_table", "tooltip_data"),
+        Output("q8_hist", "figure"),
+        Output("q8_stats", "children"),
+        Input("product", "value"),
+        Input("feature_search", "value"),
+        Input("only_pubchem", "value"),
+        Input("global_intensity_log_range", "value"),
+        Input("q8_amp_threshold", "value"),
+        Input("q8_cats", "value"),
+    )
+    def update_q8(product, feature_search, only_pubchem_vals, global_intensity_log_range, q8_amp_threshold, q8_cats):
+        empty_fig = px.histogram(pd.DataFrame({"ratio": []}), x="ratio", template="plotly")
+        empty_fig.update_layout(
+            xaxis_title="Final product / max ingredient (ratio)",
+            yaxis_title="Feature count",
+            margin=dict(l=20, r=20, t=30, b=40),
+            showlegend=True,
+        )
 
+        sdf = summary_df.copy()
+        sdf["feature"] = sdf["feature"].astype(str)
+
+        # Resolve required columns (best-effort matching)
+        try:
+            hepar_final = _find_col(sdf, Q8_HEPAR_FINAL_COL)
+            hepeel_final = _find_col(sdf, Q8_HEPEEL_FINAL_COL)
+        except KeyError as e:
+            return [], [], [], empty_fig, f"Q8: Missing final product columns. {e}"
+
+        hepar_ing_cols = _find_cols_for_ingredients(sdf, Q8_HEPAR_INGREDIENTS)
+        hepeel_ing_cols = _find_cols_for_ingredients(sdf, Q8_HEPEEL_INGREDIENTS)
+
+        if not hepar_ing_cols or not hepeel_ing_cols:
+            msg = (
+                f"Q8: Missing ingredient columns. "
+                f"Hepar matched {len(hepar_ing_cols)}/{len(Q8_HEPAR_INGREDIENTS)}, "
+                f"Hepeel matched {len(hepeel_ing_cols)}/{len(Q8_HEPEEL_INGREDIENTS)}."
+            )
+            return [], [], [], empty_fig, msg
+
+        # Numeric conversion for needed columns
+        need_cols = [hepar_final, hepeel_final] + hepar_ing_cols + hepeel_ing_cols
+        for c in need_cols:
+            if c in sdf.columns:
+                sdf[c] = pd.to_numeric(sdf[c], errors="coerce").fillna(0)
+
+        # Decide which product is selected in the top dropdown
+        pnorm = str(product).lower()
+        is_hepar = "hepar" in pnorm
+        sel_final = hepar_final if is_hepar else hepeel_final
+        sel_ratio_col = "hepar_ratio" if is_hepar else "hepeel_ratio"
+        sel_state_col = "hepar_state" if is_hepar else "hepeel_state"
+        other_state_col = "hepeel_state" if is_hepar else "hepar_state"
+
+        # Global intensity filter should behave like the rest of the app:
+        # apply it to the SELECTED product final intensity only
+        if global_intensity_log_range:
+            log_lo, log_hi = map(float, global_intensity_log_range)
+            lo = 10 ** log_lo
+            hi = 10 ** log_hi
+            sdf = sdf[sdf[sel_final].between(lo, hi, inclusive="both")].copy()
+
+        # Feature search
+        if feature_search and str(feature_search).strip():
+            s = str(feature_search).strip()
+            sdf = sdf[sdf["feature"].astype(str).str.contains(s, case=False, na=False)].copy()
+
+        # Only PubChem filter
+        if "only" in (only_pubchem_vals or []):
+            if "pubchemids" in sdf.columns:
+                sdf = sdf[sdf["pubchemids"].apply(has_pubchem)].copy()
+            else:
+                sdf = sdf.iloc[0:0].copy()
+
+        amp_thr = float(q8_amp_threshold) if q8_amp_threshold else 3.0
+        amp_thr = max(1.0, amp_thr)
+
+        hepar_comp_max = sdf[hepar_ing_cols].max(axis=1)
+        hepeel_comp_max = sdf[hepeel_ing_cols].max(axis=1)
+
+        # Store max values in the dataframe for tooltip use
+        sdf["hepar_comp_max"] = hepar_comp_max
+        sdf["hepeel_comp_max"] = hepeel_comp_max
+
+        sdf["hepar_ratio"] = sdf[hepar_final] / hepar_comp_max.replace(0, pd.NA)
+        sdf["hepeel_ratio"] = sdf[hepeel_final] / hepeel_comp_max.replace(0, pd.NA)
+
+        sdf["hepar_state"] = [_q8_state(float(p), float(m), amp_thr) for p, m in zip(sdf[hepar_final], hepar_comp_max)]
+        sdf["hepeel_state"] = [_q8_state(float(p), float(m), amp_thr) for p, m in zip(sdf[hepeel_final], hepeel_comp_max)]
+
+        # Build selective categories (still computed using BOTH products)
+        def cat(row) -> list[str]:
+            out: list[str] = []
+            hs = row["hepar_state"]
+            ps = row["hepeel_state"]
+            if hs == "amplified" and ps != "amplified":
+                out.append("hepar_selective_amplification")
+            if ps == "amplified" and hs != "amplified":
+                out.append("hepeel_selective_amplification")
+            if hs == "attenuated" and ps != "attenuated":
+                out.append("hepar_selective_attenuation")
+            if ps == "attenuated" and hs != "attenuated":
+                out.append("hepeel_selective_attenuation")
+            return out
+
+        sdf["q8_category"] = sdf.apply(cat, axis=1)
+        sdf = sdf.explode("q8_category").dropna(subset=["q8_category"])
+
+        # Map the TWO checkboxes to the right categories depending on selected product
+        amp_cat = "hepar_selective_amplification" if is_hepar else "hepeel_selective_amplification"
+        att_cat = "hepar_selective_attenuation" if is_hepar else "hepeel_selective_attenuation"
+
+        desired = set(q8_cats or [])
+        allowed = set()
+        if "selective_amplification" in desired:
+            allowed.add(amp_cat)
+        if "selective_attenuation" in desired:
+            allowed.add(att_cat)
+
+        sdf = sdf[sdf["q8_category"].isin(allowed)].copy() if allowed else sdf.iloc[0:0].copy()
+
+        # Add a friendly type label for display
+        sdf["q8_type"] = sdf["q8_category"].map({
+            amp_cat: "Selective amplification",
+            att_cat: "Selective attenuation",
+        })
+
+        # Histogram on selected product ratio
+        if sdf.empty:
+            fig = empty_fig
+        else:
+            fig = px.histogram(
+                sdf,
+                x=sel_ratio_col,
+                color="q8_type",
+                nbins=40,
+                template="plotly",
+            )
+            fig.update_layout(
+                xaxis_title="Final product / max ingredient (ratio)",
+                yaxis_title="Feature count",
+                margin=dict(l=20, r=20, t=30, b=40),
+                legend_title_text="",
+            )
+
+        # Output table (show selected product columns + other product state for context)
+        out_cols = [
+            "feature",
+            "q8_type",
+            sel_final,
+            sel_ratio_col,
+            sel_state_col,
+            other_state_col,
+        ]
+        for c in ["name", "molecularFormula", "pubchemids", "NPC.pathway"]:
+            if c in sdf.columns:
+                out_cols.append(c)
+
+        out = sdf[out_cols].copy()
+        out = out.sort_values([ "q8_type", sel_ratio_col ], ascending=[True, False]).head(2000)
+
+        # Tooltip helpers and builder
+        def _fmt_int(x):
+            try:
+                if x is None or (isinstance(x, float) and pd.isna(x)):
+                    return "NA"
+                return f"{float(x):,.0f}"
+            except Exception:
+                return "NA"
+
+        def _fmt_ratio(x):
+            try:
+                if x is None or (isinstance(x, float) and pd.isna(x)):
+                    return "NA"
+                return f"{float(x):.2f}"
+            except Exception:
+                return "NA"
+
+        inv_thr = 1.0 / amp_thr if amp_thr else float("nan")
+
+        # Build per-row tooltips for the ratio cells
+        tooltips = []
+        for _, r in out.iterrows():
+            hf = r.get(hepar_final, float("nan"))
+            hm = r.get("hepar_comp_max", float("nan"))
+            hr = r.get("hepar_ratio", float("nan"))
+            hs = r.get("hepar_state", "")
+
+            pf = r.get(hepeel_final, float("nan"))
+            pm = r.get("hepeel_comp_max", float("nan"))
+            pr = r.get("hepeel_ratio", float("nan"))
+            ps = r.get("hepeel_state", "")
+
+            hepar_tip = (
+                f"**ratio = Final / max(ingredients)**\n"
+                f"= {_fmt_int(hf)} / {_fmt_int(hm)} = **{_fmt_ratio(hr)}**\n\n"
+                f"Amplified if ratio ≥ **{amp_thr:.2f}**\n"
+                f"Attenuated if ratio ≤ **{inv_thr:.2f}**\n"
+                f"→ **{hs}**"
+            )
+
+            hepeel_tip = (
+                f"**ratio = Final / max(ingredients)**\n"
+                f"= {_fmt_int(pf)} / {_fmt_int(pm)} = **{_fmt_ratio(pr)}**\n\n"
+                f"Amplified if ratio ≥ **{amp_thr:.2f}**\n"
+                f"Attenuated if ratio ≤ **{inv_thr:.2f}**\n"
+                f"→ **{ps}**"
+            )
+
+            tooltips.append(
+                {
+                    "hepar_ratio": {"value": hepar_tip, "type": "markdown"},
+                    "hepeel_ratio": {"value": hepeel_tip, "type": "markdown"},
+                }
+            )
+
+        cols = [{"name": c, "id": c} for c in out.columns]
+        stats = (
+            f"Q8 ({'Hepar' if is_hepar else 'Hepeel'}) | rows: {len(out):,} | "
+            f"amp≥{amp_thr:g}x (att≤{1/amp_thr:g}x)"
+        )
+        return out.to_dict("records"), cols, tooltips, fig, stats
 
     @app.callback(
         Output("set_source", "disabled"),

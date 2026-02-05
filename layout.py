@@ -17,7 +17,6 @@ def build_layout(app_title: str, origin_options: list[dict]):
         "position": "sticky",
         "top": "0",
         "overflowY": "auto",
-
     }
     MAIN = {
         "flex": "1",
@@ -38,8 +37,6 @@ def build_layout(app_title: str, origin_options: list[dict]):
             "maxWidth": "1650px",
             "margin": "0 auto",
             "padding": "10px",
-            
-            
         },
         children=[
             # ===================== LEFT SIDEBAR =====================
@@ -47,7 +44,6 @@ def build_layout(app_title: str, origin_options: list[dict]):
                 style=SIDEBAR,
                 children=[
                     html.H3(app_title, style={"marginTop": 0}),
-
                     html.H4("Global filters", style={"marginBottom": "6px"}),
 
                     html.Label("Final product"),
@@ -102,7 +98,6 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     ),
 
                     html.Hr(),
-
                     html.H4("Navigation", style={"marginBottom": "6px"}),
 
                     html.Label("Choose view"),
@@ -115,6 +110,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                             {"label": "Q3: Plant vs animal signal", "value": "q3"},
                             {"label": "Q4: Component-only", "value": "q4"},
                             {"label": "Q5: Product-only", "value": "q5"},
+                            {"label": "Q8: Selective amplification/attenuation", "value": "q8"},
                         ],
                         value="explore::All product features",
                         clearable=False,
@@ -320,6 +316,73 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                         page_size=25,
                                         sort_action="native",
                                         filter_action="none",
+                                        style_table={"minWidth": "100%"},
+                                        style_cell={
+                                            "textAlign": "left",
+                                            "padding": "6px",
+                                            "fontFamily": "Arial",
+                                            "fontSize": 12,
+                                            "whiteSpace": "nowrap",
+                                        },
+                                        style_header={"fontWeight": "bold"},
+                                    ),
+                                ],
+                            ),
+                        ],
+                    ),
+
+                    # ---------- Q8 view ----------
+                    html.Div(
+                        id="view_q8",
+                        style=HIDE,
+                        children=[
+                            html.H3("Q8: Selective amplification & attenuation", style={"marginTop": 0}),
+                            html.Div(
+                                style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
+                                children=[
+                                    html.Div(
+                                        style={"minWidth": "300px"},
+                                        children=[
+                                            html.Label("Amplification threshold (x)"),
+                                            dcc.Slider(
+                                                id="q8_amp_threshold",
+                                                min=1.0,
+                                                max=10.0,
+                                                step=0.25,
+                                                value=3.0,
+                                                marks={1: "1x", 2: "2x", 3: "3x", 5: "5x", 10: "10x"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={"minWidth": "320px"},
+                                        children=[
+                                            html.Label("Show categories"),
+                                            dcc.Checklist(
+                                                id="q8_cats",
+                                                options=[
+                                                    {"label": "Selective amplification", "value": "selective_amplification"},
+                                                    {"label": "Selective attenuation", "value": "selective_attenuation"},
+                                                ],
+                                                value=["selective_amplification", "selective_attenuation"],
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            html.Div(id="q8_stats", style={"marginTop": "10px", "fontSize": "14px"}),
+                            dcc.Graph(id="q8_hist", style={"height": "320px"}),
+
+                            html.Div(
+                                style={"overflowX": "auto", "width": "100%", "marginTop": "10px"},
+                                children=[
+                                    dash_table.DataTable(
+                                        id="q8_table",
+                                        page_size=25,
+                                        sort_action="native",
+                                        filter_action="none",
+                                        tooltip_delay=0,
+                                        tooltip_duration=None,
                                         style_table={"minWidth": "100%"},
                                         style_cell={
                                             "textAlign": "left",
