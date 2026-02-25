@@ -383,6 +383,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                         filter_action="none",
                                         tooltip_delay=0,
                                         tooltip_duration=None,
+                                        hidden_columns=["hepar_comp_max", "hepeel_comp_max"],
                                         style_table={"minWidth": "100%"},
                                         style_cell={
                                             "textAlign": "left",

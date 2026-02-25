@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import product
 from pathlib import Path
 import re
 
@@ -26,30 +27,12 @@ Q8_HEPAR_FINAL_COL = "Hepar.comp.Ampoules..Bulk.mat.52324."
 Q8_HEPEEL_FINAL_COL = "Hepeel.ampoule.solution..Bulk"
 
 Q8_HEPAR_INGREDIENTS = [
-    "Avena sativa",
-    "Chelidonium majus",
-    "Cinchona pubescens",
-    "Cynara scolymus",
-    "Lycopodium clavatum",
-    "Silybum marianum",
-    "Taraxacum officinale",
-    "Veratrum album",
-    "Colon suis",
-    "Duodenum suis",
-    "Hepar suis",
-    "Pankreas suis",
-    "Thymus suis",
-    "Vesica fellea suis",
+    "Avena sativa","Chelidonium majus","Cinchona pubescens","Cynara scolymus","Lycopodium clavatum","Silybum marianum","Taraxacum officinale","Veratrum album",
+    "Colon suis","Duodenum suis", "Hepar suis","Pankreas suis","Thymus suis","Vesica fellea suis",
 ]
 
 Q8_HEPEEL_INGREDIENTS = [
-    "Chelidonium majus",
-    "Cinchona pubescens",
-    "Citrullus colocynthis",
-    "Lycopodium clavatum",
-    "Myristica fragrans",
-    "Silybum marianum",
-    "Veratrum album",
+    "Chelidonium majus","Cinchona pubescens","Citrullus colocynthis","Lycopodium clavatum","Myristica fragrans","Silybum marianum","Veratrum album",
 ]
 
 
@@ -140,7 +123,36 @@ def compute_origin_sets(product_df: pd.DataFrame, summary_df: pd.DataFrame, grou
         "Unique to product": unique,
     }
 
+def compute_product_sets(product: str, data: dict) -> dict[str, set[str]]:
+    """
+    Sets based on Hepar vs Hepeel (final products only):
+      - All product features
+      - Unique to product (vs other product)
+      - Shared (both products)
+    """
+    product_names = [k for k in data.keys() if not str(k).startswith("_")]
+    if product not in product_names:
+        return {"All product features": set(), "Unique to product": set(), "Shared (both products)": set()}
 
+    # assume exactly 2 products (Hepar + Hepeel)
+    other = next((p for p in product_names if p != product), None)
+    if other is None:
+        prod_ids = set(data[product].features["feature"].astype(str).dropna())
+        return {"All product features": prod_ids, "Unique to product": set(), "Shared (both products)": set()}
+
+    prod_ids = set(data[product].features["feature"].astype(str).dropna())
+    other_ids = set(data[other].features["feature"].astype(str).dropna())
+
+    unique_vs_other = prod_ids - other_ids
+    shared_both = prod_ids & other_ids
+
+    return {
+        "All product features": prod_ids,
+        "Unique to product": unique_vs_other,
+        "Shared (both products)": shared_both,
+    }
+
+#Q4/Q5 HELPERS START
 def build_product_only_df(prod_df: pd.DataFrame, summary_df: pd.DataFrame, groups: dict) -> pd.DataFrame:
     origin_sets = compute_origin_sets(prod_df, summary_df, groups, threshold=0)
     ids = origin_sets["Unique to product"]
@@ -187,7 +199,7 @@ def build_component_only_df(prod_feature_ids: set[str], summary_df: pd.DataFrame
     keep = [c for c in ["feature", "source", "max_component_intensity", "name", "molecularFormula", "pubchemids", "NPC.pathway"] if c in sdf.columns]
     return sdf[keep].sort_values("max_component_intensity", ascending=False)
 
-
+# EXPLORE PLOT HELPERS START
 def make_bar_topN(df: pd.DataFrame, use_log: bool, top_n: int):
     ycol = "log10_intensity" if use_log and "log10_intensity" in df.columns else "intensity"
     dff = df.dropna(subset=[ycol, "feature"]).sort_values(ycol, ascending=False).head(top_n)
@@ -207,6 +219,7 @@ def make_scatter(df: pd.DataFrame, use_log: bool):
     fig.update_layout(xaxis_title="RT (min)", yaxis_title=ycol, margin=dict(l=20, r=20, t=40, b=40))
     return fig
 
+# Q3 HELPERS START
 def _ensure_numeric_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     for c in cols:
         if c in df.columns:
@@ -374,9 +387,10 @@ def build_app() -> Dash:
     app.title = APP_TITLE
 
     origin_options = [
-        {"label": "All product features", "value": "All product features"},
-        {"label": "Unique to product", "value": "Unique to product"},
-        {"label": "Common (plant+animal)", "value": "Common (plant+animal)"},
+    {"label": "All product features", "value": "All product features"},
+    {"label": "Unique to product (vs other product)", "value": "Unique to product"},
+    {"label": "Shared (both products)", "value": "Shared (both products)"},
+    {"label": "Common (plant+animal components)", "value": "Common (plant+animal)"},
     ]
 
     app.layout = build_layout(APP_TITLE, origin_options)
@@ -576,6 +590,8 @@ def build_app() -> Dash:
         out_cols = [
             "feature",
             "q8_type",
+            "hepar_comp_max",
+            "hepeel_comp_max",
             sel_final,
             sel_ratio_col,
             sel_state_col,
@@ -709,8 +725,17 @@ def build_app() -> Dash:
     def update_graph(product: str, origin_filter: str, chart_type: str, top_n: int, global_use_log_vals, feature_search: str, only_pubchem_vals, global_intensity_log_range):
         prod_df = data[product].features.copy()
 
+        # Product-vs-product sets (Hepar-only / Hepeel-only / shared)
+        prod_sets = compute_product_sets(product, data)
+
+        # Component-origin set (plant+animal common) still comes from old logic
         origin_sets = compute_origin_sets(prod_df, summary_df, groups, threshold=0)
-        allowed_ids = origin_sets.get(origin_filter, origin_sets["All product features"])
+
+        if origin_filter in prod_sets:
+            allowed_ids = prod_sets[origin_filter]
+        else:
+            allowed_ids = origin_sets.get(origin_filter, origin_sets["All product features"])
+        
         dff = prod_df[prod_df["feature"].astype(str).isin(allowed_ids)].copy()
 
         # Global product-intensity filter (log slider)
@@ -887,4 +912,4 @@ def build_app() -> Dash:
 
 if __name__ == "__main__":
     app = build_app()
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=True, use_reloader=True)
