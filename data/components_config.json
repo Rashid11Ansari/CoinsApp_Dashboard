@@ -1,0 +1,76 @@
+{
+  "hepar_components": [
+    "Avena.sativa",
+    "Chelidonium.majus",
+    "Cinchona.pubescens",
+    "Cynara.scolymus",
+    "Lycopodium.clavatum",
+    "Silybum.marianum.",
+    "Taraxacum.officinale",
+    "Veratrum.album",
+    "Colon.Suis.D4",
+    "Duodenum.Suis.D4",
+    "Hepar.Suis.D4",
+    "Pankreas.Suis.D4",
+    "Thymus.Suis.D4",
+    "Vesica.Fellea.Suis.D4"
+  ],
+  "hepeel_components": [
+    "Chelidonium.majus",
+    "Cinchona.pubescens",
+    "Citrullus.colocynthis.",
+    "Lycopodium.clavatum",
+    "Myristica.fragrans.",
+    "Silybum.marianum.",
+    "Veratrum.album"
+  ],
+  "plant_components": [
+    "Avena.sativa",
+    "Chelidonium.majus",
+    "Cinchona.pubescens",
+    "Cynara.scolymus",
+    "Citrullus.colocynthis.",
+    "Lycopodium.clavatum",
+    "Myristica.fragrans.",
+    "Silybum.marianum.",
+    "Taraxacum.officinale",
+    "Veratrum.album"
+  ],
+  "animal_components": [
+    "Colon.Suis.D4",
+    "Duodenum.Suis.D4",
+    "Hepar.Suis.D4",
+    "Pankreas.Suis.D4",
+    "Thymus.Suis.D4",
+    "Vesica.Fellea.Suis.D4"
+  ],
+
+  "hepar_plant_components": [
+    "Avena.sativa",
+    "Chelidonium.majus",
+    "Cinchona.pubescens",
+    "Cynara.scolymus",
+    "Lycopodium.clavatum",
+    "Silybum.marianum.",
+    "Taraxacum.officinale",
+    "Veratrum.album"
+  ],
+  "hepar_animal_components": [
+    "Colon.Suis.D4",
+    "Duodenum.Suis.D4",
+    "Hepar.Suis.D4",
+    "Pankreas.Suis.D4",
+    "Thymus.Suis.D4",
+    "Vesica.Fellea.Suis.D4"
+  ],
+  "hepeel_plant_components": [
+    "Chelidonium.majus",
+    "Cinchona.pubescens",
+    "Citrullus.colocynthis.",
+    "Lycopodium.clavatum",
+    "Myristica.fragrans.",
+    "Silybum.marianum.",
+    "Veratrum.album"
+  ],
+  "hepeel_animal_components": []
+}
