@@ -112,7 +112,8 @@ def build_layout(app_title: str, origin_options: list[dict]):
                             {"label": "Q5: Product-only", "value": "q5"},
                             {"label": "Q6: Ingredient contribution", "value": "q6"},
                             {"label": "Q7: Enriched features", "value": "q7"},                           
-                            {"label": "Q8: Selective amplification/attenuation", "value": "q8"},
+                            {"label": "Q8: Selective amp / att (which features?)", "value": "q8"},
+                            {"label": "Q9: Shared vs unique chemistry (Hepar/Hepeel)", "value": "q9"},
                             {"label": "Q10: Hepar - Hepeel (plant vs animal driver)", "value": "q10"},
                         ],
                         value="explore::Shared between Hepar & Hepeel",
@@ -561,7 +562,18 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         id="view_q8",
                         style=HIDE,
                         children=[
-                            html.H3("Q8: Selective amplification & attenuation", style={"marginTop": 0}),
+                            dcc.Store(id="q8_selected_feature"),
+                            dcc.Store(id="q8_card_open", data=False),
+                            html.H3(
+                                "Q8: Which features show selective amplification vs selective attenuation?",
+                                style={"marginTop": 0},
+                            ),
+                            html.P(
+                                "For Hepar vs Hepeel: a feature is selective if, by final / max(component) ratio, one product is amplified or "
+                                "attenuated while the other is not. The top panel shows selective amplification and the bottom panel selective "
+                                "attenuation (relative to the product selected in the sidebar). Click a bar to open details.",
+                                style={"margin": "0 0 10px 0", "color": "#444", "maxWidth": "900px"},
+                            ),
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
                                 children=[
@@ -582,7 +594,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                     html.Div(
                                         style={"minWidth": "320px"},
                                         children=[
-                                            html.Label("Show categories"),
+                                            html.Label("Show"),
                                             dcc.Checklist(
                                                 id="q8_cats",
                                                 options=[
@@ -596,7 +608,42 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                 ],
                             ),
                             html.Div(id="q8_stats", style={"marginTop": "10px", "fontSize": "14px"}),
-                            dcc.Graph(id="q8_hist", style={"height": "320px"}),
+                            dcc.Graph(id="q8_graph", style={"height": "720px", "marginTop": "8px"}),
+                            html.Div(
+                                id="q8_feature_card",
+                                style={"display": "none"},
+                                children=[
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #ddd",
+                                            "borderRadius": "8px",
+                                            "padding": "10px 12px",
+                                            "backgroundColor": "#f9fafb",
+                                            "position": "relative",
+                                            "marginTop": "8px",
+                                        },
+                                        children=[
+                                            html.Button(
+                                                "x",
+                                                id="q8_close_card",
+                                                n_clicks=0,
+                                                title="Close",
+                                                style={
+                                                    "position": "absolute",
+                                                    "top": "8px",
+                                                    "right": "10px",
+                                                    "border": "none",
+                                                    "background": "transparent",
+                                                    "fontSize": "18px",
+                                                    "cursor": "pointer",
+                                                    "lineHeight": "16px",
+                                                },
+                                            ),
+                                            html.Div(id="q8_card_body", style={"paddingRight": "18px"}),
+                                        ],
+                                    ),
+                                ],
+                            ),
 
                             html.Div(
                                 style={"overflowX": "auto", "width": "100%", "marginTop": "10px"},
@@ -609,6 +656,79 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                         tooltip_delay=0,
                                         tooltip_duration=None,
                                         hidden_columns=["hepar_comp_max", "hepeel_comp_max"],
+                                        style_table={"minWidth": "100%"},
+                                        style_cell={
+                                            "textAlign": "left",
+                                            "padding": "6px",
+                                            "fontFamily": "Arial",
+                                            "fontSize": 12,
+                                            "whiteSpace": "nowrap",
+                                        },
+                                        style_header={"fontWeight": "bold"},
+                                    ),
+                                ],
+                            ),
+                        ],
+                    ),
+                    html.Div(
+                        id="view_q9",
+                        style=HIDE,
+                        children=[
+                            dcc.Store(id="q9_selected_feature"),
+                            dcc.Store(id="q9_card_open", data=False),
+                            html.H3(
+                                "Q9: How are Hepar and Hepeel chemically different?",
+                                style={"marginTop": 0},
+                            ),
+                            html.P(
+                                "Color legend: Shared (both), Unique to Hepar, Unique to Hepeel",
+                                style={"margin": "0 0 8px 0", "color": "#444"},
+                            ),
+                            html.Div(id="q9_stats", style={"marginTop": "6px", "fontSize": "14px"}),
+                            dcc.Graph(id="q9_graph", style={"height": "520px", "marginTop": "8px"}),
+                            html.Div(
+                                id="q9_feature_card",
+                                style={"display": "none"},
+                                children=[
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #ddd",
+                                            "borderRadius": "8px",
+                                            "padding": "10px 12px",
+                                            "backgroundColor": "#f9fafb",
+                                            "position": "relative",
+                                            "marginTop": "8px",
+                                        },
+                                        children=[
+                                            html.Button(
+                                                "x",
+                                                id="q9_close_card",
+                                                n_clicks=0,
+                                                title="Close",
+                                                style={
+                                                    "position": "absolute",
+                                                    "top": "8px",
+                                                    "right": "10px",
+                                                    "border": "none",
+                                                    "background": "transparent",
+                                                    "fontSize": "18px",
+                                                    "cursor": "pointer",
+                                                    "lineHeight": "16px",
+                                                },
+                                            ),
+                                            html.Div(id="q9_card_body", style={"paddingRight": "18px"}),
+                                        ],
+                                    )
+                                ],
+                            ),
+                            html.Div(
+                                style={"overflowX": "auto", "width": "100%", "marginTop": "10px"},
+                                children=[
+                                    dash_table.DataTable(
+                                        id="q9_table",
+                                        page_size=25,
+                                        sort_action="native",
+                                        filter_action="none",
                                         style_table={"minWidth": "100%"},
                                         style_cell={
                                             "textAlign": "left",
