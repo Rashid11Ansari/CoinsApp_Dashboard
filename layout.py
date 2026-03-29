@@ -503,51 +503,36 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         ],
                     ),
                     # ---------- Q7 view ----------
+                    #TODO
                     html.Div(
                         id="view_q7",
                         style=HIDE,
                         children=[
-                            html.H3("Q7: Enriched features (Final − sum(ingredients))", style={"marginTop": 0}),
-
+                            html.H3(
+                                "Q7: Enriched features (final product > sum of ingredient intensities)",
+                                style={"marginTop": 0},
+                            ),
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
                                 children=[
                                     html.Div(
                                         style={"minWidth": "260px"},
                                         children=[
-                                            html.Label("Top enriched features"),
+                                            html.Label("Top enriched features in chart"),
                                             dcc.Slider(
                                                 id="q7_top_n",
-                                                min=25,
-                                                max=1000,
-                                                step=25,
-                                                value=300,
-                                                marks={25: "25", 100: "100", 300: "300", 600: "600", 1000: "1000"},
+                                                min=10,
+                                                max=200,
+                                                step=10,
+                                                value=50,
+                                                marks={10: "10", 50: "50", 100: "100", 200: "200"},
                                             ),
                                         ],
                                     ),
                                 ],
                             ),
-
                             html.Div(id="q7_stats", style={"marginTop": "10px", "fontSize": "14px"}),
-
-                            dcc.Graph(id="q7_graph", style={"height": "420px"}),
-
-                            html.Div(
-                                id="q7_pubchem",
-                                style={
-                                    "marginTop": "10px",
-                                    "marginBottom": "10px",
-                                    "fontSize": "14px",
-                                    "fontWeight": "bold",
-                                    "color": "black",
-                                    "backgroundColor": "#f5f5f5",
-                                    "padding": "10px",
-                                    "borderRadius": "5px",
-                                },
-                                children="Click a feature bar to see PubChem ID(s)",
-                            ),
-
+                            dcc.Graph(id="q7_graph", style={"height": "420px", "marginTop": "10px"}),
                             html.Div(
                                 style={"overflowX": "auto", "width": "100%", "marginTop": "10px"},
                                 children=[
@@ -570,6 +555,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                             ),
                         ],
                     ),
+
                     # ---------- Q8 view ----------
                     html.Div(
                         id="view_q8",

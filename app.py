@@ -667,134 +667,258 @@ def build_app() -> Dash:
         return q6_dom_fig, contrib_fig, table_df.to_dict("records"), cols, stats
 
     # ---- Q7: Enrichment vs component sources (Final − sum(components)) ----
+    # ---- Q7: Enrichment vs component sources (read DIRECTLY from Excel) ----
+    HEPAR_COLS = [
+        "Avena.sativa",
+        "Chelidonium.majus",
+        "Cinchona.pubescens",
+        "Cynara.scolymus",
+        "Lycopodium.clavatum",
+        "Silybum.marianum.",
+        "Taraxacum.officinale",
+        "Veratrum.album",
+        "Colon.Suis.D4",
+        "Duodenum.Suis.D4",
+        "Hepar.Suis.D4",
+        "Pankreas.Suis.D4",
+        "Thymus.Suis.D4",
+        "Vesica.Fellea.Suis.D4",
+    ]
+
+    HEPEEL_COLS = [
+        "Chelidonium.majus",
+        "Cinchona.pubescens",
+        "Citrullus.colocynthis.",
+        "Lycopodium.clavatum",
+        "Myristica.fragrans.",
+        "Silybum.marianum.",
+        "Veratrum.album",
+    ]
+
+    HEPAR_TARGET_COL = "Hepar.comp.Ampoules..Bulk.mat.52324."
+    HEPEEL_BULK_COL = "Hepeel.ampoule.solution..Bulk"
+
+    def _load_q7_excel_df() -> pd.DataFrame:
+        """
+        Read Excel directly for Q7.
+        The workbook has a title row first, so the real header is row 2.
+        """
+        excel_path = Path(__file__).resolve().parent / "data" / "Product_features_summary_annotation.xlsx"
+
+        # IMPORTANT: real header is the second row
+        df = pd.read_excel(excel_path, header=1)
+
+        df["feature"] = df["feature"].astype(str).str.strip()
+
+        needed_cols = HEPAR_COLS + HEPEEL_COLS + [HEPAR_TARGET_COL, HEPEEL_BULK_COL]
+        missing = [c for c in needed_cols if c not in df.columns]
+        if missing:
+            raise KeyError(f"Q7: Missing required Excel columns: {missing}")
+
+        for c in needed_cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
+        # ingredient sums
+        df["hepar_ingredient_sum"] = df[HEPAR_COLS].sum(axis=1)
+        df["hepeel_ingredient_sum"] = df[HEPEEL_COLS].sum(axis=1)
+
+        # final product values
+        df["hepar_final_product"] = df[HEPAR_TARGET_COL]
+        df["hepeel_final_product"] = df[HEPEEL_BULK_COL]
+
+        # enrichment deltas
+        df["hepar_enrichment_delta"] = df["hepar_final_product"] - df["hepar_ingredient_sum"]
+        df["hepeel_enrichment_delta"] = df["hepeel_final_product"] - df["hepeel_ingredient_sum"]
+
+        # enrichment flags
+        df["hepar_enriched"] = df["hepar_enrichment_delta"] > 0
+        df["hepeel_enriched"] = df["hepeel_enrichment_delta"] > 0
+
+        return df
+
     @app.callback(
         Output("q7_graph", "figure"),
         Output("q7_table", "data"),
         Output("q7_table", "columns"),
-        Output("q7_pubchem", "children"),
         Output("q7_stats", "children"),
         Input("product", "value"),
         Input("feature_search", "value"),
         Input("only_pubchem", "value"),
         Input("global_intensity_log_range", "value"),
         Input("q7_top_n", "value"),
-        Input("q7_graph", "clickData"),
     )
-    def update_q7(product, feature_search, only_pubchem_vals, global_intensity_log_range, q7_top_n, q7_clickData):
-        sdf = summary_df.copy()
-        sdf["feature"] = sdf["feature"].astype(str)
-
-        # Resolve final product column for selected product
+    def update_q7(product, feature_search, only_pubchem_vals, global_intensity_log_range, q7_top_n):
         try:
-            final_col = _find_col(sdf, Q8_HEPAR_FINAL_COL) if "hepar" in str(product).lower() else _find_col(sdf, Q8_HEPEEL_FINAL_COL)
-        except KeyError as e:
-            fig = px.bar(title=f"Q7: Missing final product column ({e})")
-            return fig, [], [], "Q7: Missing final product column.", ""
+            dff = _load_q7_excel_df()
+        except Exception as e:
+            fig = px.bar(
+                pd.DataFrame({"feature": [], "enrichment_delta": []}),
+                x="feature",
+                y="enrichment_delta",
+                template="plotly",
+                title=f"Q7: error loading Excel ({e})",
+            )
+            return fig, [], [], f"Q7 error: {e}"
 
-        # Ingredient columns for selected product (authoritative from data_loader groups)
-        if "hepar" in str(product).lower():
-            base_cols = list(groups.get("hepar_component_cols", []))
-        else:
-            base_cols = list(groups.get("hepeel_component_cols", []))
+        # optional filters
+        if feature_search and str(feature_search).strip():
+            s = str(feature_search).strip()
+            dff = dff[dff["feature"].str.contains(s, case=False, na=False)].copy()
 
-        # keep only those that exist in the dataframe
-        ingredient_cols = [c for c in base_cols if c in sdf.columns]
-        missing = [c for c in base_cols if c not in sdf.columns]
+        if "only" in (only_pubchem_vals or []):
+            if "pubchemids" in dff.columns:
+                dff = dff[dff["pubchemids"].apply(has_pubchem)].copy()
+            else:
+                dff = dff.iloc[0:0].copy()
 
-        if not ingredient_cols:
-            fig = px.bar(title="Q7: No ingredient columns available for this product")
-            return fig, [], [], "Q7: No ingredient columns available for this product.", ""
-
-        # Numeric conversion
-        sdf[final_col] = pd.to_numeric(sdf[final_col], errors="coerce").fillna(0)
-        for c in ingredient_cols:
-            if c in sdf.columns:
-                sdf[c] = pd.to_numeric(sdf[c], errors="coerce").fillna(0)
-
-        # Restrict to features in selected product feature list
-        prod_df = data[product].features.copy()
-        prod_df["feature"] = prod_df["feature"].astype(str)
-        prod_ids = set(prod_df["feature"].dropna().astype(str))
-        sdf = sdf[sdf["feature"].isin(prod_ids)].copy()
-
-        # Global intensity filter based on product feature intensity
-        if global_intensity_log_range and "intensity" in prod_df.columns:
+        # apply global slider to BOTH product finals so the page stays consistent
+        if global_intensity_log_range:
             log_lo, log_hi = map(float, global_intensity_log_range)
             lo = 10 ** log_lo
             hi = 10 ** log_hi
-            keep_ids = set(prod_df.loc[prod_df["intensity"].between(lo, hi, inclusive="both"), "feature"].astype(str))
-            sdf = sdf[sdf["feature"].isin(keep_ids)].copy()
+            dff = dff[
+                dff["hepar_final_product"].between(lo, hi, inclusive="both")
+                | dff["hepeel_final_product"].between(lo, hi, inclusive="both")
+            ].copy()
 
-        # Feature search
-        if feature_search and str(feature_search).strip():
-            s = str(feature_search).strip()
-            sdf = sdf[sdf["feature"].str.contains(s, case=False, na=False)].copy()
+        top_n = int(q7_top_n) if q7_top_n else 50
 
-        # Only PubChem filter
-        if "only" in (only_pubchem_vals or []):
-            if "pubchemids" in sdf.columns:
-                sdf = sdf[sdf["pubchemids"].apply(has_pubchem)].copy()
+        # build Hepar enriched rows
+        hepar_df = dff[dff["hepar_enriched"]].copy()
+        hepar_df["ingredient_sum"] = hepar_df["hepar_ingredient_sum"]
+        hepar_df["final_product"] = hepar_df["hepar_final_product"]
+        hepar_df["enrichment_delta"] = hepar_df["hepar_enrichment_delta"]
+        hepar_df["enriched_in"] = "Hepar"
+
+        # build Hepeel enriched rows
+        hepeel_df = dff[dff["hepeel_enriched"]].copy()
+        hepeel_df["ingredient_sum"] = hepeel_df["hepeel_ingredient_sum"]
+        hepeel_df["final_product"] = hepeel_df["hepeel_final_product"]
+        hepeel_df["enrichment_delta"] = hepeel_df["hepeel_enrichment_delta"]
+        hepeel_df["enriched_in"] = "Hepeel"
+
+        # combine both
+        enriched_df = pd.concat([hepar_df, hepeel_df], ignore_index=True)
+
+        # optional: if dropdown is selected, sort with selected product first
+        if "hepar" in str(product).lower():
+            enriched_df["product_priority"] = (enriched_df["enriched_in"] != "Hepar").astype(int)
+        else:
+            enriched_df["product_priority"] = (enriched_df["enriched_in"] != "Hepeel").astype(int)
+
+        enriched_df = enriched_df.sort_values(
+            ["product_priority", "enrichment_delta"],
+            ascending=[True, False]
+        ).copy()
+
+        plot_df = enriched_df.head(top_n).copy()
+
+        if plot_df.empty:
+            fig = px.bar(
+                pd.DataFrame({"feature": [], "enrichment_delta": [], "enriched_in": []}),
+                x="feature",
+                y="enrichment_delta",
+                color="enriched_in",
+                template="plotly",
+                title="Q7: Hepar + Hepeel enriched features",
+            )
+        else:
+            hover_cols = [
+                c for c in [
+                    "ingredient_sum",
+                    "final_product",
+                    "hepar_ingredient_sum",
+                    "hepar_final_product",
+                    "hepar_enrichment_delta",
+                    "hepeel_ingredient_sum",
+                    "hepeel_final_product",
+                    "hepeel_enrichment_delta",
+                    "name",
+                    "molecularFormula",
+                    "pubchemids",
+                    "NPC.pathway",
+                ] if c in plot_df.columns
+            ]
+
+            if plot_df.empty:
+                fig = px.bar(
+                    pd.DataFrame({"feature": [], "enrichment_delta": [], "enriched_in": []}),
+                    x="feature",
+                    y="enrichment_delta",
+                    color="enriched_in",
+                    template="plotly",
+                    title="Q7: Hepar + Hepeel enriched features",
+                )
             else:
-                sdf = sdf.iloc[0:0].copy()
+                hover_cols = [
+                    c for c in [
+                        "ingredient_sum",
+                        "final_product",
+                        "hepar_ingredient_sum",
+                        "hepar_final_product",
+                        "hepar_enrichment_delta",
+                        "hepeel_ingredient_sum",
+                        "hepeel_final_product",
+                        "hepeel_enrichment_delta",
+                        "name",
+                        "molecularFormula",
+                        "pubchemids",
+                        "NPC.pathway",
+                    ] if c in plot_df.columns
+                ]
 
-        # Enrichment = Final - sum(ingredients)
-        mat_ing = sdf[ingredient_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-        ing_sum = mat_ing.sum(axis=1)
-        sdf["q7_ingredient_sum"] = ing_sum
-        sdf["q7_enrichment"] = sdf[final_col] - ing_sum
+                fig = px.bar(
+                    plot_df,
+                    x="feature",
+                    y="enrichment_delta",
+                    color="enriched_in",
+                    barmode="group",
+                    hover_data=hover_cols,
+                    template="plotly",
+                    title="Q7: Enriched features in Hepar and Hepeel (read directly from Excel)",
+                    log_y=True,
+                )
 
-        # Keep enriched > 0
-        sdf = sdf[sdf["q7_enrichment"] > 0].copy()
+                fig.update_layout(
+                    xaxis_title="feature",
+                    yaxis_title="final product - sum(ingredients) [log scale]",
+                    margin=dict(l=20, r=20, t=50, b=140),
+                    legend_title_text="",
+                )
 
-        top_n = int(q7_top_n) if q7_top_n else 300
-        sdf = sdf.sort_values("q7_enrichment", ascending=False).head(top_n)
+                fig.update_xaxes(tickangle=-35)
 
-        # Plot (log_y like enrichment scripts)
-        fig = px.bar(
-            sdf,
-            x="feature",
-            y="q7_enrichment",
-            title="Enriched features (Final − sum(ingredients))",
-            template="plotly",
-            log_y=True,
-        )
-        fig.update_layout(xaxis=dict(showticklabels=True, tickangle=45), yaxis_title="enrichment (log scale)")
 
-        # PubChem output on click
-        pubchem_out = "Click a feature bar to see PubChem ID(s)"
-        if q7_clickData and "points" in q7_clickData and q7_clickData["points"]:
-            f_clicked = str(q7_clickData["points"][0].get("x"))
-            row = sdf[sdf["feature"] == f_clicked]
-            if not row.empty:
-                pubchem_ids = row["pubchemids"].iloc[0] if "pubchemids" in row.columns else None
-                cids = extract_pubchem_cids(pubchem_ids)
-                if not cids:
-                    pubchem_out = f"Feature {f_clicked} | PubChem ID(s): Not available"
-                else:
-                    pubchem_out = html.Div([
-                        html.B(f"Feature: {f_clicked} | PubChem CID(s): "),
-                        html.Span([
-                            html.A(
-                                cid,
-                                href=f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}",
-                                target="_blank",
-                                style={"marginRight": "10px"},
-                            )
-                            for cid in cids
-                        ])
-                    ])
-
-        # Table
-        out_cols = ["feature", "q7_enrichment", final_col, "q7_ingredient_sum"]
+        out_cols = [
+            "feature",
+            "enriched_in",
+            "ingredient_sum",
+            "final_product",
+            "enrichment_delta",
+            "hepar_ingredient_sum",
+            "hepar_final_product",
+            "hepar_enrichment_delta",
+            "hepeel_ingredient_sum",
+            "hepeel_final_product",
+            "hepeel_enrichment_delta",
+        ]
         for c in ["name", "molecularFormula", "pubchemids", "NPC.pathway"]:
-            if c in sdf.columns:
+            if c in enriched_df.columns:
                 out_cols.append(c)
 
-        out_df = sdf[out_cols].copy()
-        columns = [{"name": c, "id": c} for c in out_df.columns]
-        miss_txt = f" | missing cols: {len(missing)}" if 'missing' in locals() and missing else ""
-        stats = f"Q7 | enriched rows: {len(out_df):,} | top_n={top_n}{miss_txt}"
-        return fig, out_df.to_dict("records"), columns, pubchem_out, stats
+        out_df = enriched_df[out_cols].copy()
+        cols = [{"name": c, "id": c} for c in out_df.columns]
+
+        hepar_count = int((enriched_df["enriched_in"] == "Hepar").sum())
+        hepeel_count = int((enriched_df["enriched_in"] == "Hepeel").sum())
+
+        stats = (
+            f"Q7 | Hepar enriched: {hepar_count:,} | "
+            f"Hepeel enriched: {hepeel_count:,} | "
+            f"total rows: {len(enriched_df):,} | source: Excel"
+        )
+
+        return fig, out_df.to_dict("records"), cols, stats
     # ---- Q8: Selective amplification/attenuation (Final / max(component)) ----
     @app.callback(
         Output("q8_table", "data"),
