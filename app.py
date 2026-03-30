@@ -72,8 +72,34 @@ def _q8_state(prod: float, comp_max: float, amp_thr: float) -> str:
 
 def _q8_empty_figure(msg: str) -> go.Figure:
     fig = go.Figure()
-    fig.add_annotation(text=msg, xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False)
-    fig.update_layout(template="plotly", margin=dict(l=20, r=20, t=40, b=40), xaxis=dict(visible=False), yaxis=dict(visible=False))
+    fig.add_shape(
+        type="rect",
+        xref="paper",
+        yref="paper",
+        x0=0.12,
+        x1=0.88,
+        y0=0.3,
+        y1=0.7,
+        line={"color": "#cbd5e1", "width": 1, "dash": "dot"},
+        fillcolor="rgba(241,245,249,0.7)",
+    )
+    fig.add_annotation(
+        text=msg,
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        font={"size": 13, "color": "#475569"},
+    )
+    fig.update_layout(
+        template="plotly",
+        margin=dict(l=20, r=20, t=40, b=40),
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+    )
     return fig
 
 
@@ -500,6 +526,8 @@ def build_app() -> Dash:
     app.layout = build_layout(APP_TITLE, origin_options)
     # ---- Navigation: show/hide views and set origin_filter ----
     @app.callback(
+        Output("app_root", "style"),
+        Output("view_home", "style"),
         Output("view_explore", "style"),
         Output("view_q1", "style"),
         Output("view_q3", "style"),
@@ -516,41 +544,197 @@ def build_app() -> Dash:
 
     def switch_view(page_select: str):
         show = {"display": "block"}
+        show_home = {"display": "block", "backgroundColor": "#0b1220", "padding": "10px", "borderRadius": "12px"}
         hide = {"display": "none"}
+
+        analysis_root_style = {
+            "display": "flex",
+            "minHeight": "100vh",
+            "alignItems": "stretch",
+            "gap": "12px",
+            "maxWidth": "1720px",
+            "margin": "0 auto",
+            "padding": "10px",
+        }
+        home_root_style = {
+            "display": "flex",
+            "minHeight": "100vh",
+            "alignItems": "stretch",
+            "gap": "0px",
+            "maxWidth": "100%",
+            "margin": "0",
+            "padding": "0",
+            "backgroundColor": "#0b1220",
+        }
 
         origin_val = "All product features"
 
-        # order:
-        # explore, q1, q3, q4, q5, q6, q7, q8, q9, q10, origin_filter,
+        def _pack(root_style, home_s, explore_s, q1_s, q3_s, q4_s, q5_s, q6_s, q7_s, q8_s, q9_s, q10_s, origin):
+            return (
+                root_style,
+                home_s,
+                explore_s,
+                q1_s,
+                q3_s,
+                q4_s,
+                q5_s,
+                q6_s,
+                q7_s,
+                q8_s,
+                q9_s,
+                q10_s,
+                origin,
+            )
 
         if not page_select:
-            return show, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val
+            return _pack(home_root_style, show_home, hide, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
 
-        # Explore shortcut
         if isinstance(page_select, str) and page_select.startswith("explore::"):
             origin_val = page_select.split("::", 1)[1]
-            return show, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, show, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
+        if page_select == "home":
+            return _pack(home_root_style, show_home, hide, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q1":
-            return hide, show, hide, hide, hide, hide, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, show, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q3":
-            return hide, hide, show, hide, hide, hide, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, show, hide, hide, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q4":
-            return hide, hide, hide, show, hide, hide, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, show, hide, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q5":
-            return hide, hide, hide, hide, show, hide, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, show, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q6":
-            return hide, hide, hide, hide, hide, show, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, show, hide, hide, hide, hide, origin_val)
         if page_select == "q7":
-            return hide, hide, hide, hide, hide, hide, show, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, hide, show, hide, hide, hide, origin_val)
         if page_select == "q8":
-            return hide, hide, hide, hide, hide, hide, hide, show, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, hide, hide, show, hide, hide, origin_val)
         if page_select == "q9":
-            return hide, hide, hide, hide, hide, hide, hide, hide, show, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, hide, hide, hide, show, hide, origin_val)
         if page_select == "q10":
-            return hide, hide, hide, hide, hide, hide, hide, hide, hide, show, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, hide, hide, hide, hide, show, origin_val)
 
-        # fallback -> explore
-        return show, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val
+        return _pack(home_root_style, show_home, hide, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
+
+    @app.callback(
+        Output("home_quick_stats_dynamic", "children"),
+        Input("product", "value"),
+    )
+    def update_home_quick_stats(product):
+        hepar_df = data["Hepar"].features.copy()
+        hepeel_df = data["Hepeel"].features.copy()
+        hepar_ids = set(hepar_df["feature"].astype(str).dropna())
+        hepeel_ids = set(hepeel_df["feature"].astype(str).dropna())
+        shared_n = len(hepar_ids & hepeel_ids)
+        uniq_hepar_n = len(hepar_ids - hepeel_ids)
+        uniq_hepeel_n = len(hepeel_ids - hepar_ids)
+
+        current_n = 0
+        if product in data and "feature" in data[product].features.columns:
+            current_n = int(data[product].features["feature"].astype(str).nunique())
+
+        stats = [
+            ("Features in selection", f"{current_n:,}"),
+            ("Shared features", f"{shared_n:,}"),
+            ("Unique to Hepar", f"{uniq_hepar_n:,}"),
+            ("Unique to Hepeel", f"{uniq_hepeel_n:,}"),
+        ]
+
+        cards = []
+        for label, value in stats:
+            cards.append(
+                html.Div(
+                    className="home-stat-card",
+                    style={
+                        "border": "1px solid #e5e7eb",
+                        "borderRadius": "12px",
+                        "padding": "12px",
+                        "backgroundColor": "#ffffff",
+                        "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                    },
+                    children=[
+                        html.Div(label, style={"fontSize": "12px", "color": "#64748b", "fontWeight": "600"}),
+                        html.Div(value, style={"fontSize": "22px", "fontWeight": "700", "color": "#0f172a", "marginTop": "2px"}),
+                    ],
+                )
+            )
+        return cards
+
+    @app.callback(
+        Output("home_product_toggle_button", "children"),
+        Input("product", "value"),
+    )
+    def update_home_product_toggle_button(product):
+        product_str = str(product) if product else "Hepar"
+        return [
+            html.Div("Selected product", style={"fontSize": "12px", "color": "#64748b", "fontWeight": "600", "marginBottom": "6px"}),
+            html.Div(product_str, style={"fontSize": "22px", "fontWeight": "700", "color": "#0f172a", "lineHeight": 1.1}),
+            html.Div("Click to switch product", style={"fontSize": "11px", "fontStyle": "italic", "color": "#64748b", "marginTop": "6px"}),
+        ]
+
+    @app.callback(
+        Output("product", "value"),
+        Input("home_product_toggle_button", "n_clicks"),
+        State("product", "value"),
+        prevent_initial_call=True,
+    )
+    def toggle_home_product(n_clicks, current_product):
+        if not n_clicks:
+            return no_update
+        current = str(current_product) if current_product else "Hepar"
+        return "Hepeel" if current == "Hepar" else "Hepar"
+
+    @app.callback(
+        Output("analysis_sidebar", "style"),
+        Input("page_select", "value"),
+    )
+    def toggle_analysis_back_button(page_select):
+        if str(page_select) == "home":
+            return {"display": "none"}
+        return {"display": "block"}
+
+    @app.callback(
+        Output("page_select", "value"),
+        Input("home_go_explore", "n_clicks"),
+        Input("home_go_q1", "n_clicks"),
+        Input("home_go_q3", "n_clicks"),
+        Input("home_go_q4", "n_clicks"),
+        Input("home_go_q5", "n_clicks"),
+        Input("home_go_q6", "n_clicks"),
+        Input("home_go_q7", "n_clicks"),
+        Input("home_go_q8", "n_clicks"),
+        Input("home_go_q9", "n_clicks"),
+        Input("home_go_q10", "n_clicks"),
+        Input("analysis_back_home", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def home_navigation_router(
+        go_explore,
+        go_q1,
+        go_q3,
+        go_q4,
+        go_q5,
+        go_q6,
+        go_q7,
+        go_q8,
+        go_q9,
+        go_q10,
+        back_home,
+    ):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else ""
+        route_map = {
+            "home_go_explore": "explore::Shared between Hepar & Hepeel",
+            "home_go_q1": "q1",
+            "home_go_q3": "q3",
+            "home_go_q4": "q4",
+            "home_go_q5": "q5",
+            "home_go_q6": "q6",
+            "home_go_q7": "q7",
+            "home_go_q8": "q8",
+            "home_go_q9": "q9",
+            "home_go_q10": "q10",
+            "analysis_back_home": "home",
+        }
+        return route_map.get(trigger, "home")
 
 
     # ---- Q6: Feature-level ingredient contribution drilldown ----
@@ -1029,7 +1213,7 @@ def build_app() -> Dash:
             else:
                 sdf = sdf.iloc[0:0].copy()
 
-        amp_thr = float(q8_amp_threshold) if q8_amp_threshold else 3.0
+        amp_thr = float(q8_amp_threshold) if q8_amp_threshold else 1.0
         amp_thr = max(1.0, amp_thr)
 
         hepar_comp_max = sdf[hepar_ing_cols].max(axis=1)
@@ -1101,6 +1285,35 @@ def build_app() -> Dash:
         amp_color = "#27ae60"
         att_color = "#e67e22"
 
+        def _add_empty_panel_message(fig_obj: go.Figure, row: int, message: str):
+            # Draw an explicit empty-state card inside the subplot region.
+            if row == 1:
+                y0, y1, y_text = 0.58, 0.92, 0.75
+            else:
+                y0, y1, y_text = 0.08, 0.42, 0.25
+
+            fig_obj.add_shape(
+                type="rect",
+                xref="paper",
+                yref="paper",
+                x0=0.05,
+                x1=0.95,
+                y0=y0,
+                y1=y1,
+                line={"color": "#cbd5e1", "width": 1, "dash": "dot"},
+                fillcolor="rgba(241,245,249,0.7)",
+            )
+            fig_obj.add_annotation(
+                x=0.5,
+                y=y_text,
+                xref="paper",
+                yref="paper",
+                text=message,
+                showarrow=False,
+                font={"size": 13, "color": "#475569"},
+                align="center",
+            )
+
         def make_q8_bar_trace(df: pd.DataFrame, color: str) -> go.Bar:
             xs = df["feature"].astype(str).tolist()
             ys = _q8_log10_ratio_series(df[sel_ratio_col])
@@ -1141,8 +1354,20 @@ def build_app() -> Dash:
             )
             if not amp_df.empty:
                 fig.add_trace(make_q8_bar_trace(amp_df, amp_color), row=1, col=1)
+            else:
+                _add_empty_panel_message(
+                    fig,
+                    row=1,
+                    message=f"No selective amplification features found for {prod_label} under the current filters.",
+                )
             if not att_df.empty:
                 fig.add_trace(make_q8_bar_trace(att_df, att_color), row=2, col=1)
+            else:
+                _add_empty_panel_message(
+                    fig,
+                    row=2,
+                    message=f"No selective attenuation features found for {prod_label} under the current filters.",
+                )
             fig.update_xaxes(title_text="feature (each bar = one feature)", showticklabels=False, row=1, col=1)
             fig.update_xaxes(title_text="feature (each bar = one feature)", showticklabels=False, row=2, col=1)
             fig.update_yaxes(title_text="log10(Final / max component)", row=1, col=1)
@@ -1153,8 +1378,10 @@ def build_app() -> Dash:
                 margin=dict(l=50, r=20, t=90, b=40),
                 title_text=f"Q8 ({prod_label}): which features show selective amp / att?",
             )
-        elif show_amp and not amp_df.empty:
-            fig = go.Figure(data=[make_q8_bar_trace(amp_df, amp_color)])
+        elif show_amp:
+            fig = go.Figure(data=[make_q8_bar_trace(amp_df, amp_color)]) if not amp_df.empty else _q8_empty_figure(
+                f"No selective amplification features found for {prod_label} under the current filters."
+            )
             fig.update_layout(
                 template="plotly",
                 height=460,
@@ -1163,8 +1390,10 @@ def build_app() -> Dash:
                 yaxis=dict(title="log10(Final / max component)"),
                 margin=dict(l=50, r=20, t=70, b=40),
             )
-        elif show_att and not att_df.empty:
-            fig = go.Figure(data=[make_q8_bar_trace(att_df, att_color)])
+        elif show_att:
+            fig = go.Figure(data=[make_q8_bar_trace(att_df, att_color)]) if not att_df.empty else _q8_empty_figure(
+                f"No selective attenuation features found for {prod_label} under the current filters."
+            )
             fig.update_layout(
                 template="plotly",
                 height=460,
@@ -1445,9 +1674,25 @@ def build_app() -> Dash:
             selected_row = q9_table_df[q9_table_df["feature"].astype(str) == selected_feature]
             if not selected_row.empty:
                 r = selected_row.iloc[0]
+                q9_cls = str(r.get("q9_class", ""))
+                if q9_cls == "Shared (Hepar + Hepeel)":
+                    card_border = "#636EFA"
+                    card_bg = "rgba(99, 110, 250, 0.14)"
+                elif q9_cls == "Unique to Hepar":
+                    card_border = "#EF553B"
+                    card_bg = "rgba(239, 85, 59, 0.14)"
+                elif q9_cls == "Unique to Hepeel":
+                    card_border = "#00CC96"
+                    card_bg = "rgba(0, 204, 150, 0.14)"
+                else:
+                    card_border = "#ddd"
+                    card_bg = "rgba(249, 250, 251, 1)"
                 card_body = html.Div([
-                    html.H4(f"Selected feature: {selected_feature}", style={"margin": "0 0 8px 0"}),
-                    html.Div(f"Class: {r.get('q9_class', 'NA')}"),
+                    html.H4(
+                        f"Selected feature: {selected_feature}",
+                        style={"margin": "0 0 8px 0", "color": card_border},
+                    ),
+                    html.Div(f"Class: {r.get('q9_class', 'NA')}", style={"fontWeight": "600", "color": card_border}),
                     html.Div(f"Hepar intensity: {float(r.get('hepar_intensity', 0.0)):,.0f}"),
                     html.Div(f"Hepeel intensity: {float(r.get('hepeel_intensity', 0.0)):,.0f}"),
                     html.Div(f"Max intensity: {float(r.get('q9_intensity', 0.0)):,.0f}"),
@@ -1457,7 +1702,12 @@ def build_app() -> Dash:
                     html.Div(f"PubChem IDs: {r.get('pubchemids', 'NA')}"),
                     html.Div(f"NPC Pathway: {r.get('NPC.pathway', 'NA')}"),
                 ])
-                card_style = {"display": "block", "marginTop": "6px"}
+                card_style = {
+                    "display": "block",
+                    "marginTop": "6px",
+                    "--q9-card-border": card_border,
+                    "--q9-card-bg": card_bg,
+                }
 
         shared_n = int((qdf["q9_class"] == "Shared (Hepar + Hepeel)").sum()) if not qdf.empty else 0
         hepar_n = int((qdf["q9_class"] == "Unique to Hepar").sum()) if not qdf.empty else 0

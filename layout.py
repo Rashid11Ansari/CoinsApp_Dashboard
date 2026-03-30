@@ -6,131 +6,100 @@ from dash import dcc, html, dash_table
 def build_layout(app_title: str, origin_options: list[dict]):
     origin_default = origin_options[0]["value"] if origin_options else None
 
-    # helper styles
     SIDEBAR = {
-        "width": "380px",
+        "width": "360px",
         "padding": "16px",
-        "borderRight": "1px solid #ddd",
-        "backgroundColor": "#fafafa",
+        "borderRight": "1px solid #e2e8f0",
+        "backgroundColor": "#f8fafc",
         "boxSizing": "border-box",
         "height": "100vh",
         "position": "sticky",
         "top": "0",
         "overflowY": "auto",
     }
-    MAIN = {
-        "flex": "1",
-        "padding": "12px",
-        "overflowX": "hidden",
-        "minWidth": 0,
-        "boxSizing": "border-box",
-    }
+    MAIN = {"flex": "1", "padding": "12px", "overflowX": "hidden", "minWidth": 0, "boxSizing": "border-box"}
     HIDE = {"display": "none"}
     SHOW = {"display": "block"}
 
     return html.Div(
+        id="app_root",
         style={
             "display": "flex",
             "minHeight": "100vh",
             "alignItems": "stretch",
             "gap": "12px",
-            "maxWidth": "1650px",
+            "maxWidth": "1720px",
             "margin": "0 auto",
             "padding": "10px",
         },
         children=[
-            # ===================== LEFT SIDEBAR =====================
+            # ===================== LEFT SIDEBAR (analysis only) =====================
             html.Div(
-                style=SIDEBAR,
+                id="analysis_sidebar",
+                style={"display": "none"},
                 children=[
-                    html.H3(app_title, style={"marginTop": 0}),
-                    html.H4("Global filters", style={"marginBottom": "6px"}),
-
-                    html.Label("Final product"),
-                    dcc.Dropdown(
-                        id="product",
-                        options=[{"label": k, "value": k} for k in ["Hepar", "Hepeel"]],
-                        value="Hepar",
-                        searchable=False,
-                        clearable=False,
-                    ),
-
-                    html.Div(style={"height": "20px"}),
-
-                    html.Label("Search feature ID (optional)"),
-                    dcc.Input(
-                        id="feature_search",
-                        type="text",
-                        placeholder="e.g., N_10036",
-                        style={"width": "100%"},
-                    ),
-
-                    html.Div(style={"height": "10px"}),
-
-                    dcc.Checklist(
-                        id="only_pubchem",
-                        options=[{"label": "Only features with PubChem CID(s)", "value": "only"}],
-                        value=[],
-                    ),
-
-                    html.Div(style={"height": "6px"}),
-
-                    dcc.Checklist(
-                        id="global_use_log",
-                        options=[{"label": "Use log10(intensity)", "value": "log"}],
-                        value=["log"],
-                    ),
-
-                    html.Div(style={"height": "12px"}),
-
-                    html.Label("Product intensity filter (global)"),
-                    dcc.RangeSlider(
-                        id="global_intensity_log_range",
-                        min=2,
-                        max=7,
-                        step=0.3,
-                        value=[2, 7],
-                        marks={},
-                        tooltip={"placement": "bottom", "always_visible": False},
-                    ),
                     html.Div(
-                        id="global_intensity_range_label",
-                        style={"fontSize": "12px", "color": "#666", "marginTop": "6px"},
-                    ),
-
-                    html.Hr(),
-                    html.H4("Navigation", style={"marginBottom": "6px"}),
-
-                    html.Label("Choose view"),
-                    dcc.Dropdown(
-                        id="page_select",
-                        options=[
-                            {"label": "Explore: Shared between Hepar & Hepeel", "value": "explore::Shared between Hepar & Hepeel"},
-                            {"label": "Q1: Product features & origin", "value": "q1"},
-                            {"label": "Q3: Plant vs animal signal", "value": "q3"},
-                            {"label": "Q4: Component-only", "value": "q4"},
-                            {"label": "Q5: Product-only", "value": "q5"},
-                            {"label": "Q6: Ingredient contribution", "value": "q6"},
-                            {"label": "Q7: Enriched features", "value": "q7"},                           
-                            {"label": "Q8: Selective amp / att (which features?)", "value": "q8"},
-                            {"label": "Q9: Shared vs unique chemistry (Hepar/Hepeel)", "value": "q9"},
-                            {"label": "Q10: Hepar - Hepeel (plant vs animal driver)", "value": "q10"},
+                        style=SIDEBAR,
+                        children=[
+                            html.H3(app_title, style={"marginTop": 0}),
+                            html.Button(
+                                "Back to Homepage",
+                                id="analysis_back_home",
+                                n_clicks=0,
+                                style={
+                                    "margin": "8px 0 14px 0",
+                                    "padding": "9px 14px",
+                                    "borderRadius": "10px",
+                                    "border": "1px solid rgba(15,23,42,0.15)",
+                                    "backgroundColor": "#ffffff",
+                                    "color": "#0f172a",
+                                    "cursor": "pointer",
+                                    "fontWeight": "600",
+                                    "width": "100%",
+                                },
+                            ),
+                            html.H4("Global filters", style={"marginBottom": "6px"}),
+                            html.Label("Final product"),
+                            dcc.Dropdown(id="product", options=[{"label": k, "value": k} for k in ["Hepar", "Hepeel"]], value="Hepar", searchable=False, clearable=False),
+                            html.Div(style={"height": "20px"}),
+                            html.Label("Search feature ID (optional)"),
+                            dcc.Input(id="feature_search", type="text", placeholder="e.g., N_10036", style={"width": "100%"}),
+                            html.Div(style={"height": "10px"}),
+                            dcc.Checklist(id="only_pubchem", options=[{"label": "Only features with PubChem CID(s)", "value": "only"}], value=[]),
+                            html.Div(style={"height": "6px"}),
+                            dcc.Checklist(id="global_use_log", options=[{"label": "Use log10(intensity)", "value": "log"}], value=["log"]),
+                            html.Div(style={"height": "12px"}),
+                            html.Label("Product intensity filter (global)"),
+                            dcc.RangeSlider(id="global_intensity_log_range", min=2, max=7, step=0.3, value=[2, 7], marks={}, tooltip={"placement": "bottom", "always_visible": False}),
+                            html.Div(id="global_intensity_range_label", style={"fontSize": "12px", "color": "#666", "marginTop": "6px"}),
+                            html.Hr(),
+                            html.H4("Navigation", style={"marginBottom": "6px"}),
+                            html.Label("Choose view"),
+                            dcc.Dropdown(
+                                id="page_select",
+                                options=[
+                                    {"label": "Home", "value": "home"},
+                                    {"label": "Explore", "value": "explore::Shared between Hepar & Hepeel"},
+                                    {"label": "Q1: Product features & origin", "value": "q1"},
+                                    {"label": "Q3: Plant vs animal signal", "value": "q3"},
+                                    {"label": "Q4: Component-only", "value": "q4"},
+                                    {"label": "Q5: Product-only", "value": "q5"},
+                                    {"label": "Q6: Ingredient contribution", "value": "q6"},
+                                    {"label": "Q7: Enriched features", "value": "q7"},
+                                    {"label": "Q8: Selective amp/att", "value": "q8"},
+                                    {"label": "Q9: Shared vs unique", "value": "q9"},
+                                    {"label": "Q10: Hepar–Hepeel driver", "value": "q10"},
+                                ],
+                                value="home",
+                                maxHeight=420,
+                                optionHeight=38,
+                                searchable=False,
+                                clearable=False,
+                                style={"width": "100%"},
+                            ),
+                            dcc.Dropdown(id="origin_filter", options=origin_options, value=origin_default, searchable=False, clearable=False, style={"display": "none"}),
                         ],
-                        value="explore::Shared between Hepar & Hepeel",
-                        maxHeight=720,
-                        searchable=False,
-                        clearable=False,
-                    ),
-
-                    # Hidden controls – driven by page_select; kept for existing callbacks
-                    dcc.Dropdown(
-                        id="origin_filter",
-                        options=origin_options,
-                        value=origin_default,
-                        searchable=False,
-                        clearable=False,
-                        style={"display": "none"},
-                    ),
+                    )
                 ],
             ),
 
@@ -138,10 +107,314 @@ def build_layout(app_title: str, origin_options: list[dict]):
             html.Div(
                 style=MAIN,
                 children=[
+                    # ---------- Home / Landing view ----------
+                    html.Div(
+                        id="view_home",
+                        className="page-view",
+                        style={"display": "block", "backgroundColor": "#0b1220", "padding": "8px", "borderRadius": "12px", "position": "relative", "overflow": "hidden"},
+                        children=[
+                            html.Div(
+                                style={
+                                    "background": "linear-gradient(125deg, #0f172a 0%, #1e293b 45%, #2563eb 100%)",
+                                    "borderRadius": "16px",
+                                    "padding": "22px 22px 20px 22px",
+                                    "boxShadow": "0 12px 34px rgba(15,23,42,0.25)",
+                                    "color": "#f8fafc",
+                                    "position": "relative",
+                                    "zIndex": 1,
+                                },
+                                children=[
+                                    html.Div(
+                                        style={
+                                            "display": "inline-block",
+                                            "padding": "5px 10px",
+                                            "borderRadius": "999px",
+                                            "fontSize": "12px",
+                                            "fontWeight": "600",
+                                            "backgroundColor": "rgba(255,255,255,0.18)",
+                                            "marginBottom": "10px",
+                                        },
+                                        children="MS Metabolomics Intelligence",
+                                    ),
+                                    html.H1(
+                                        "COINS-App Dashboard",
+                                        style={"margin": "0 0 8px 0", "fontSize": "36px", "lineHeight": "1.1"},
+                                    ),
+                                    html.P(
+                                        [
+                                            "Explore feature chemistry across ",
+                                            html.Span("Hepar", style={"textDecoration": "underline"}),
+                                            " and ",
+                                            html.Span("Hepeel", style={"textDecoration": "underline"}),
+                                            " using interactive analysis modules (Q1–Q10) with origin-aware filters and click-through scientific detail cards.",
+                                        ],
+                                        style={"margin": "0 0 14px 0", "fontSize": "16px", "maxWidth": "920px", "opacity": 0.95},
+                                    ),
+                                    html.Div(
+                                        style={"display": "flex", "gap": "10px", "flexWrap": "wrap", "marginTop": "8px"},
+                                        children=[
+                                            html.Button("Start Analysis (Explore)", id="home_go_explore", n_clicks=0, style={"padding": "10px 16px", "borderRadius": "10px", "border": "none", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "#f8fafc", "color": "#0f172a"}),
+                                            html.Button("Open Q1", id="home_go_q1", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                            html.Button("Open Q3", id="home_go_q3", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                            html.Button("Open Q4", id="home_go_q4", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                            html.Button("Open Q5", id="home_go_q5", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                            html.Button("Open Q6", id="home_go_q6", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                            html.Button("Open Q7", id="home_go_q7", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                            html.Button("Open Q8", id="home_go_q8", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                            html.Button("Open Q9", id="home_go_q9", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                            html.Button("Open Q10", id="home_go_q10", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                        ],
+                                        id="home_hero_buttons",
+                                    ),
+                                ],
+                            ),
+                            html.Div(
+                                style={
+                                    "display": "grid",
+                                    "gridTemplateColumns": "repeat(auto-fit, minmax(180px, 1fr))",
+                                    "gap": "10px",
+                                    "marginTop": "14px",
+                                    "position": "relative",
+                                    "zIndex": 1,
+                                },
+                                children=[
+                                    html.Div(id="home_quick_stats_dynamic", style={"display": "contents"}),
+                                    html.Button(
+                                        id="home_product_toggle_button",
+                                        n_clicks=0,
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "12px 14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "width": "100%",
+                                            "textAlign": "left",
+                                        },
+                                        children=[
+                                            html.Div("Selected product", style={"fontSize": "12px", "color": "#64748b", "fontWeight": "600", "marginBottom": "6px"}),
+                                            html.Div("Hepar", style={"fontSize": "22px", "fontWeight": "700", "color": "#0f172a", "lineHeight": 1.1}),
+                                            html.Div("Click to switch product", style={"fontSize": "11px", "fontStyle": "italic", "color": "#64748b", "marginTop": "6px"}),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            html.Div(
+                                style={
+                                    "display": "grid",
+                                    "gridTemplateColumns": "repeat(auto-fit, minmax(280px, 1fr))",
+                                    "gap": "10px",
+                                    "marginTop": "12px",
+                                    "position": "relative",
+                                    "zIndex": 1,
+                                },
+                                children=[
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card",
+                                        children=[
+                                            html.H4("Product Features & Origin", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "Analyze feature composition by origin groups and inspect distribution patterns.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card",
+                                        children=[
+                                            html.H4("Plant vs Animal Signal", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "Measure dominance and mixed signatures across plant and animal contributions.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card",
+                                        children=[
+                                            html.H4("Component-only Features", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "List features found in ingredients but missing in the selected final product.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card",
+                                        children=[
+                                            html.H4("Product-only Features", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "Highlight product features not detected in raw component profiles.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card",
+                                        children=[
+                                            html.H4("Ingredient Contribution", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "Drill into per-feature ingredient dominance and relative contribution intensity.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card",
+                                        children=[
+                                            html.H4("Enriched Features", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "Find features where final-product intensity exceeds the sum of ingredient intensities "
+                                                "for Hepar and Hepeel.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card",
+                                        children=[
+                                            html.H4("Selective Amplification/Attenuation", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "Track feature-specific selective amplification or attenuation "
+                                                "between Hepar and Hepeel using ratio-based categorization.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card",
+                                        children=[
+                                            html.H4("Shared vs Unique Chemistry", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "Compare shared and product-specific features and inspect detailed cards directly "
+                                                "from interactive bars.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card",
+                                        children=[
+                                            html.H4("Difference Driver Analysis", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "Identify strongest Hepar-Hepeel differences and estimate plant/animal drivers.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #e5e7eb",
+                                            "borderRadius": "12px",
+                                            "padding": "14px",
+                                            "backgroundColor": "#ffffff",
+                                            "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                                            "cursor": "pointer",
+                                        },
+                                        className="home-topic-card home-topic-card--pubchem",
+                                        children=[
+                                            html.H4("PubChem-annotated features", style={"margin": "0 0 8px 0"}),
+                                            html.P(
+                                                "Use the PubChem-only filter to show MS features that already have PubChem CID(s) in the dataset.",
+                                                style={"margin": 0, "color": "#475569"},
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            html.Div(
+                                className="chem-footer",
+                                children=[
+                                    html.Span("C=C", className="chem-particle", style={"left": "6%", "top": "20%", "fontSize": "20px", "animationDuration": "14s", "animationDelay": "-2s", "color": "rgba(147,197,253,0.55)"}),
+                                    html.Span("N-H", className="chem-particle", style={"left": "18%", "top": "52%", "fontSize": "16px", "animationDuration": "12s", "animationDelay": "-5s", "color": "rgba(167,243,208,0.55)"}),
+                                    html.Span("O=C=O", className="chem-particle", style={"left": "30%", "top": "30%", "fontSize": "15px", "animationDuration": "13s", "animationDelay": "-8s", "color": "rgba(251,191,36,0.55)"}),
+                                    html.Span("C-C-C", className="chem-particle", style={"left": "44%", "top": "64%", "fontSize": "18px", "animationDuration": "15s", "animationDelay": "-1s", "color": "rgba(96,165,250,0.55)"}),
+                                    html.Span("H-O-H", className="chem-particle", style={"left": "58%", "top": "26%", "fontSize": "16px", "animationDuration": "11s", "animationDelay": "-4s", "color": "rgba(45,212,191,0.55)"}),
+                                    html.Span("C-N", className="chem-particle", style={"left": "72%", "top": "56%", "fontSize": "18px", "animationDuration": "10s", "animationDelay": "-7s", "color": "rgba(165,180,252,0.55)"}),
+                                    html.Span("O-H", className="chem-particle", style={"left": "86%", "top": "20%", "fontSize": "15px", "animationDuration": "12s", "animationDelay": "-6s", "color": "rgba(251,113,133,0.55)"}),
+                                    html.Span("H-N-H", className="chem-particle", style={"left": "80%", "top": "78%", "fontSize": "14px", "animationDuration": "16s", "animationDelay": "-3s", "color": "rgba(147,197,253,0.55)"}),
+                                ],
+                            ),
+                        ],
+                    ),
+
                     # ---------- Explore view ----------
                     html.Div(
                         id="view_explore",
-                        style=SHOW,
+                        className="page-view",
+                        style=HIDE,
                         children=[
                             html.H3("Explore product", style={"marginTop": 0}),
                             html.Div(
@@ -185,6 +458,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     # ---------- Q1 view ----------
                     html.Div(
                         id="view_q1",
+                        className="page-view",
                         style=HIDE,
                         children=[
                             html.H3("Q1: What is in the product & where does it come from?", style={"marginTop": 0}),
@@ -249,6 +523,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     # ---------- Q3 view ----------
                     html.Div(
                         id="view_q3",
+                        className="page-view",
                         style=HIDE,
                         children=[
                             html.H3("Q3: What proportion of total signal intensity in the final product originates from plant- and animal-derived features?",
@@ -312,6 +587,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     # ---------- Q4 view ----------
                     html.Div(
                         id="view_q4",
+                        className="page-view",
                         style=HIDE,
                         children=[
                             html.H3("Q4: Component-only features (in components, missing in product)", style={"marginTop": 0}),
@@ -391,6 +667,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     # ---------- Q5 view ----------
                     html.Div(
                         id="view_q5",
+                        className="page-view",
                         style=HIDE,
                         children=[
                             html.H3("Q5: Product-only features (in product, missing in components)", style={"marginTop": 0}),
@@ -439,6 +716,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     # ---------- Q6 view ----------
                     html.Div(
                         id="view_q6",
+                        className="page-view",
                         style=HIDE,
                         children=[
                             html.H3("Q6: Which ingredients dominate the final product?", style={"marginTop": 0}),
@@ -507,6 +785,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     #TODO
                     html.Div(
                         id="view_q7",
+                        className="page-view",
                         style=HIDE,
                         children=[
                             html.H3(
@@ -560,6 +839,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     # ---------- Q8 view ----------
                     html.Div(
                         id="view_q8",
+                        className="page-view",
                         style=HIDE,
                         children=[
                             dcc.Store(id="q8_selected_feature"),
@@ -586,7 +866,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                                 min=1.0,
                                                 max=10.0,
                                                 step=0.25,
-                                                value=3.0,
+                                                value=1.0,
                                                 marks={1: "1x", 2: "2x", 3: "3x", 5: "5x", 10: "10x"},
                                             ),
                                         ],
@@ -615,10 +895,12 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                 children=[
                                     html.Div(
                                         style={
-                                            "border": "1px solid #ddd",
+                                            "border": "1px solid var(--q9-card-border, #ddd)",
+                                            "borderLeft": "6px solid var(--q9-card-border, #ddd)",
                                             "borderRadius": "8px",
-                                            "padding": "10px 12px",
-                                            "backgroundColor": "#f9fafb",
+                                            "padding": "12px 12px",
+                                            "backgroundColor": "var(--q9-card-bg, #f9fafb)",
+                                            "boxShadow": "0 10px 26px rgba(15,23,42,0.08)",
                                             "position": "relative",
                                             "marginTop": "8px",
                                         },
@@ -672,6 +954,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     ),
                     html.Div(
                         id="view_q9",
+                        className="page-view",
                         style=HIDE,
                         children=[
                             dcc.Store(id="q9_selected_feature"),
@@ -746,6 +1029,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                     # ---------- Q10 view ----------
                     html.Div(
                         id="view_q10",
+                        className="page-view",
                         style=HIDE,
                         children=[
                             html.H3("Q10: (Q10  )", style={"marginTop": 0}),
