@@ -719,6 +719,8 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         className="page-view",
                         style=HIDE,
                         children=[
+                            dcc.Store(id="q6_selected_feature"),
+                            dcc.Store(id="q6_card_open", data=False),
                             html.H3("Q6: Which ingredients dominate the final product?", style={"marginTop": 0}),
 
                             html.Div(
@@ -758,6 +760,41 @@ def build_layout(app_title: str, origin_options: list[dict]):
 
                             dcc.Graph(id="q6_dom_bar", style={"height": "360px"}),
                             dcc.Graph(id="q6_contrib_bar", style={"height": "420px"}),
+                            html.Div(
+                                id="q6_feature_card",
+                                style={"display": "none"},
+                                children=[
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #ddd",
+                                            "borderRadius": "8px",
+                                            "padding": "10px 12px",
+                                            "backgroundColor": "#f9fafb",
+                                            "position": "relative",
+                                            "marginTop": "8px",
+                                        },
+                                        children=[
+                                            html.Button(
+                                                "x",
+                                                id="q6_close_card",
+                                                n_clicks=0,
+                                                title="Close",
+                                                style={
+                                                    "position": "absolute",
+                                                    "top": "8px",
+                                                    "right": "10px",
+                                                    "border": "none",
+                                                    "background": "transparent",
+                                                    "fontSize": "18px",
+                                                    "cursor": "pointer",
+                                                    "lineHeight": "16px",
+                                                },
+                                            ),
+                                            html.Div(id="q6_card_body", style={"paddingRight": "18px"}),
+                                        ],
+                                    ),
+                                ],
+                            ),
 
                             html.Div(
                                 style={"overflowX": "auto", "width": "100%", "marginTop": "10px"},
@@ -788,6 +825,8 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         className="page-view",
                         style=HIDE,
                         children=[
+                            dcc.Store(id="q7_selected_feature"),
+                            dcc.Store(id="q7_card_open", data=False),
                             html.H3(
                                 "Q7: Enriched features (final product > sum of ingredient intensities)",
                                 style={"marginTop": 0},
@@ -813,6 +852,41 @@ def build_layout(app_title: str, origin_options: list[dict]):
                             ),
                             html.Div(id="q7_stats", style={"marginTop": "10px", "fontSize": "14px"}),
                             dcc.Graph(id="q7_graph", style={"height": "420px", "marginTop": "10px"}),
+                            html.Div(
+                                id="q7_feature_card",
+                                style={"display": "none"},
+                                children=[
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #ddd",
+                                            "borderRadius": "8px",
+                                            "padding": "10px 12px",
+                                            "backgroundColor": "#f9fafb",
+                                            "position": "relative",
+                                            "marginTop": "8px",
+                                        },
+                                        children=[
+                                            html.Button(
+                                                "x",
+                                                id="q7_close_card",
+                                                n_clicks=0,
+                                                title="Close",
+                                                style={
+                                                    "position": "absolute",
+                                                    "top": "8px",
+                                                    "right": "10px",
+                                                    "border": "none",
+                                                    "background": "transparent",
+                                                    "fontSize": "18px",
+                                                    "cursor": "pointer",
+                                                    "lineHeight": "16px",
+                                                },
+                                            ),
+                                            html.Div(id="q7_card_body", style={"paddingRight": "18px"}),
+                                        ],
+                                    ),
+                                ],
+                            ),
                             html.Div(
                                 style={"overflowX": "auto", "width": "100%", "marginTop": "10px"},
                                 children=[
