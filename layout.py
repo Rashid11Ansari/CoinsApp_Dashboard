@@ -2,6 +2,21 @@ from __future__ import annotations
 
 from dash import dcc, html, dash_table
 
+def info_icon(text: str):
+    """Hover tooltip icon for showing question logic (CSS-based, reliable)."""
+    return html.Span(
+        className="info-wrap",
+        children=[
+            html.Span(
+                "(i)",
+                className="info-i",
+            ),
+            html.Span(
+                text,
+                className="info-box",
+            ),
+        ],
+    )
 
 def build_layout(app_title: str, origin_options: list[dict]):
     origin_default = origin_options[0]["value"] if origin_options else None
@@ -21,7 +36,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
     MAIN = {
         "flex": "1",
         "padding": "12px",
-        "overflowX": "hidden",
+        "overflowX": "visible",
         "minWidth": 0,
         "boxSizing": "border-box",
     }
@@ -116,7 +131,6 @@ def build_layout(app_title: str, origin_options: list[dict]):
                             {"label": "Q10: Hepar - Hepeel (plant vs animal driver)", "value": "q10"},
                         ],
                         value="explore::Shared between Hepar & Hepeel",
-                        maxHeight=720,
                         searchable=False,
                         clearable=False,
                     ),
@@ -186,7 +200,20 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         id="view_q1",
                         style=HIDE,
                         children=[
-                            html.H3("Q1: What is in the product & where does it come from?", style={"marginTop": 0}),
+                            html.H3(
+                                [
+                                    "Q1: What is in the product & where does it come from?",
+                                    info_icon(
+                                        "Logic (per selected product):\n"
+                                        "• Plant-only: present in any plant component column (>thr) AND not in animal.\n"
+                                        "• Animal-only: present in any animal component column (>thr) AND not in plant.\n"
+                                        "• Common: present in BOTH plant and animal (>thr).\n"
+                                        "• Product-only: not present in ANY component (>thr).\n"
+                                        "Component columns come from JSON config (groups)."
+                                    ),
+                                ],
+                                style={"marginTop": 0},
+                            ),
 
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
@@ -250,8 +277,21 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         id="view_q3",
                         style=HIDE,
                         children=[
-                            html.H3("Q3: What proportion of total signal intensity in the final product originates from plant- and animal-derived features?",
-                                        style={"marginTop": 0}),
+                            html.H3(
+                                [
+                                    "Q3: Plant vs animal contribution to total product signal",
+                                    info_icon(
+                                        "Logic:\n"
+                                        "For each feature compute plant_sum = Σ(plant cols) and animal_sum = Σ(animal cols).\n"
+                                        "Classify using dominance ratio r:\n"
+                                        "• Plant-dominant if plant_sum ≥ r·animal_sum\n"
+                                        "• Animal-dominant if animal_sum ≥ r·plant_sum\n"
+                                        "• Mixed otherwise; Product-only if both sums are 0.\n"
+                                        "Proportion bar: fraction = Σ(product intensity in class) / Σ(product intensity of all shown features)."
+                                    ),
+                                ],
+                                style={"marginTop": 0},
+                            ),
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
                                 children=[
@@ -313,7 +353,21 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         id="view_q4",
                         style=HIDE,
                         children=[
-                            html.H3("Q4: Component-only features (in components, missing in product)", style={"marginTop": 0}),
+                            html.H3(
+                                [
+                                    "Q4: Component-only features (in components, missing in product)",
+                                    info_icon(
+                                        "Logic (per selected product):\n"
+                                        "Q4 = {features present in ANY component column (>thr)} − {features in final product feature list}.\n"
+                                        "Label source:\n"
+                                        "• Plant if present in plant cols (>thr)\n"
+                                        "• Animal if present in animal cols (>thr)\n"
+                                        "• Common if present in both.\n"
+                                        "thr controlled by Q4 slider (log10)."
+                                    ),
+                                ],
+                                style={"marginTop": 0},
+                            ),                            
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
                                 children=[
@@ -392,8 +446,18 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         id="view_q5",
                         style=HIDE,
                         children=[
-                            html.H3("Q5: Product-only features (in product, missing in components)", style={"marginTop": 0}),
-                            html.Div(
+                                html.H3(
+                                    [
+                                        "Q5: Product-only features (in product, missing in components)",
+                                        info_icon(
+                                            "Logic (per selected product):\n"
+                                            "Q5 = {features in final product feature list} − {features present in ANY component column (>thr)}.\n"
+                                            "Uses same component columns as Q4/Q1 from JSON config."
+                                        ),
+                                    ],
+                                    style={"marginTop": 0},
+                                ),                            
+                                html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
                                 children=[
                                     html.Div(
@@ -440,8 +504,19 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         id="view_q6",
                         style=HIDE,
                         children=[
-                            html.H3("Q6: Which ingredients dominate the final product?", style={"marginTop": 0}),
-
+                            html.H3(
+                                [
+                                    "Q6: Which ingredients dominate the final product?",
+                                    info_icon(
+                                        "Logic:\n"
+                                        "TotalIngredientIntensity(feature) = Σ(ingredient columns).\n"
+                                        "Top plot shows log10(TotalIngredientIntensity) per feature.\n"
+                                        "Click/enter a feature ID to see ingredient contributions.\n"
+                                        "Dominant ingredient (per feature) = ingredient with max intensity for that feature."
+                                    ),
+                                ],
+                                style={"marginTop": 0},
+                            ),
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
                                 children=[
@@ -507,8 +582,19 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         id="view_q7",
                         style=HIDE,
                         children=[
-                            html.H3("Q7: Enriched features (Final − sum(ingredients))", style={"marginTop": 0}),
-
+                            html.H3(
+                                [
+                                    "Q7: Enriched features",
+                                    info_icon(
+                                        "Current logic:\n"
+                                        "ingredient_sum = Σ(component columns)\n"
+                                        "enrichment = Final_product_intensity − ingredient_sum\n"
+                                        "Keep only enrichment > 0 and rank by enrichment (top N).\n"
+                                        "Global filters apply (intensity slider, search, only_pubchem)."
+                                    ),
+                                ],
+                                style={"marginTop": 0},
+                            ),
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
                                 children=[
@@ -575,7 +661,18 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         id="view_q8",
                         style=HIDE,
                         children=[
-                            html.H3("Q8: Selective amplification & attenuation", style={"marginTop": 0}),
+                            html.H3(
+                                [
+                                    "Q8: Selective amplification & attenuation",
+                                    info_icon(
+                                        "Logic:\n"
+                                        "ratio = Final / max(component)\n"
+                                        "Amplified if ratio ≥ A; Attenuated if ratio ≤ 1/A.\n"
+                                        "Selective = amplified/attenuated in one product but NOT the other."
+                                    ),
+                                ],
+                                style={"marginTop": 0},
+                            ),                            
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
                                 children=[
@@ -642,8 +739,20 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         id="view_q10",
                         style=HIDE,
                         children=[
-                            html.H3("Q10: (Q10  )", style={"marginTop": 0}),
-
+                            html.H3(
+                                [
+                                    "Q10: Hepar vs Hepeel differences (plant vs animal driver)",
+                                    info_icon(
+                                        "Logic:\n"
+                                        "Δ_final = |Hepar_final − Hepeel_final|.\n"
+                                        "Show features with Δ_final ≥ threshold (log10 slider).\n"
+                                        "On click, driver breakdown:\n"
+                                        "• Δ_plant = |Σ(Hepar plant) − Σ(Hepeel plant)|\n"
+                                        "• Δ_animal = |Σ(Hepar animal) − 0| (Hepeel has no animal)."
+                                    ),
+                                ],
+                                style={"marginTop": 0},
+                            ),
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
                                 children=[
