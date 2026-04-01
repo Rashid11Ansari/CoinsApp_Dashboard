@@ -17,12 +17,13 @@ def build_layout(app_title: str, origin_options: list[dict]):
         "top": "0",
         "overflowY": "auto",
     }
-    MAIN = {"flex": "1", "padding": "12px", "overflowX": "hidden", "minWidth": 0, "boxSizing": "border-box"}
+    MAIN = {"flex": "1", "padding": "12px", "overflowX": "hidden", "minWidth": 0, "boxSizing": "border-box", "position": "relative"}
     HIDE = {"display": "none"}
     SHOW = {"display": "block"}
 
     return html.Div(
         id="app_root",
+        className="theme-custom",
         style={
             "display": "flex",
             "minHeight": "100vh",
@@ -33,12 +34,14 @@ def build_layout(app_title: str, origin_options: list[dict]):
             "padding": "10px",
         },
         children=[
+            dcc.Store(id="page_transition_state", data={"prev": "home", "flip": 0}),
             # ===================== LEFT SIDEBAR (analysis only) =====================
             html.Div(
                 id="analysis_sidebar",
                 style={"display": "none"},
                 children=[
                     html.Div(
+                        className="analysis-sidebar-panel",
                         style=SIDEBAR,
                         children=[
                             html.H3(app_title, style={"marginTop": 0}),
@@ -57,6 +60,41 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                     "fontWeight": "600",
                                     "width": "100%",
                                 },
+                            ),
+                            html.Div(
+                                style={"display": "flex", "gap": "8px", "margin": "0 0 14px 0"},
+                                children=[
+                                    html.Button(
+                                        "← Prev Question",
+                                        id="analysis_prev_question",
+                                        n_clicks=0,
+                                        style={
+                                            "padding": "8px 10px",
+                                            "borderRadius": "10px",
+                                            "border": "1px solid rgba(15,23,42,0.15)",
+                                            "backgroundColor": "#ffffff",
+                                            "color": "#0f172a",
+                                            "cursor": "pointer",
+                                            "fontWeight": "600",
+                                            "flex": "1",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Next Question →",
+                                        id="analysis_next_question",
+                                        n_clicks=0,
+                                        style={
+                                            "padding": "8px 10px",
+                                            "borderRadius": "10px",
+                                            "border": "1px solid rgba(15,23,42,0.15)",
+                                            "backgroundColor": "#ffffff",
+                                            "color": "#0f172a",
+                                            "cursor": "pointer",
+                                            "fontWeight": "600",
+                                            "flex": "1",
+                                        },
+                                    ),
+                                ],
                             ),
                             html.H4("Global filters", style={"marginBottom": "6px"}),
                             html.Label("Final product"),
@@ -105,8 +143,41 @@ def build_layout(app_title: str, origin_options: list[dict]):
 
             # ===================== MAIN CONTENT =====================
             html.Div(
+                id="main_content_shell",
+                className="main-content-shell",
                 style=MAIN,
                 children=[
+                    html.Div(
+                        id="analysis_chem_bg",
+                        className="analysis-chem-bg",
+                        style={"display": "none"},
+                        children=[
+                            html.Span("C=C", className="analysis-chem-particle", style={"left": "7%", "top": "12%", "fontSize": "18px", "animationDuration": "14s", "animationDelay": "-2s"}),
+                            html.Span("N-H", className="analysis-chem-particle", style={"left": "18%", "top": "62%", "fontSize": "15px", "animationDuration": "12s", "animationDelay": "-5s"}),
+                            html.Span("O=C=O", className="analysis-chem-particle", style={"left": "33%", "top": "32%", "fontSize": "16px", "animationDuration": "13s", "animationDelay": "-7s"}),
+                            html.Span("C-C-C", className="analysis-chem-particle", style={"left": "47%", "top": "70%", "fontSize": "17px", "animationDuration": "15s", "animationDelay": "-1s"}),
+                            html.Span("H-O-H", className="analysis-chem-particle", style={"left": "61%", "top": "24%", "fontSize": "16px", "animationDuration": "11s", "animationDelay": "-4s"}),
+                            html.Span("C-N", className="analysis-chem-particle", style={"left": "75%", "top": "56%", "fontSize": "18px", "animationDuration": "10s", "animationDelay": "-6s"}),
+                            html.Span("O-H", className="analysis-chem-particle", style={"left": "88%", "top": "20%", "fontSize": "15px", "animationDuration": "12s", "animationDelay": "-8s"}),
+                            html.Span("H-N-H", className="analysis-chem-particle", style={"left": "84%", "top": "84%", "fontSize": "14px", "animationDuration": "16s", "animationDelay": "-3s"}),
+                            html.Span("C#N", className="analysis-chem-particle", style={"left": "11%", "top": "84%", "fontSize": "16px", "animationDuration": "18s", "animationDelay": "-9s"}),
+                            html.Span("N=C=O", className="analysis-chem-particle", style={"left": "26%", "top": "10%", "fontSize": "14px", "animationDuration": "20s", "animationDelay": "-11s"}),
+                            html.Span("C-O-C", className="analysis-chem-particle", style={"left": "39%", "top": "86%", "fontSize": "15px", "animationDuration": "17s", "animationDelay": "-13s"}),
+                            html.Span("C-H", className="analysis-chem-particle", style={"left": "52%", "top": "14%", "fontSize": "15px", "animationDuration": "19s", "animationDelay": "-15s"}),
+                            html.Span("N-O", className="analysis-chem-particle", style={"left": "67%", "top": "88%", "fontSize": "14px", "animationDuration": "21s", "animationDelay": "-4s"}),
+                            html.Span("C=C-C", className="analysis-chem-particle", style={"left": "92%", "top": "68%", "fontSize": "16px", "animationDuration": "22s", "animationDelay": "-6s"}),
+                            html.Span("C=C", className="analysis-chem-particle", style={"left": "14%", "top": "42%", "fontSize": "17px", "animationDuration": "23s", "animationDelay": "-10s"}),
+                            html.Span("N-H", className="analysis-chem-particle", style={"left": "22%", "top": "76%", "fontSize": "15px", "animationDuration": "18s", "animationDelay": "-12s"}),
+                            html.Span("O-H", className="analysis-chem-particle", style={"left": "36%", "top": "18%", "fontSize": "14px", "animationDuration": "24s", "animationDelay": "-14s"}),
+                            html.Span("C-N", className="analysis-chem-particle", style={"left": "49%", "top": "48%", "fontSize": "16px", "animationDuration": "20s", "animationDelay": "-16s"}),
+                            html.Span("H-O-H", className="analysis-chem-particle", style={"left": "58%", "top": "80%", "fontSize": "15px", "animationDuration": "19s", "animationDelay": "-18s"}),
+                            html.Span("C#N", className="analysis-chem-particle", style={"left": "69%", "top": "36%", "fontSize": "14px", "animationDuration": "21s", "animationDelay": "-20s"}),
+                            html.Span("N=C=O", className="analysis-chem-particle", style={"left": "79%", "top": "14%", "fontSize": "16px", "animationDuration": "22s", "animationDelay": "-9s"}),
+                            html.Span("C-O-C", className="analysis-chem-particle", style={"left": "86%", "top": "44%", "fontSize": "15px", "animationDuration": "25s", "animationDelay": "-7s"}),
+                            html.Span("C-H", className="analysis-chem-particle", style={"left": "8%", "top": "62%", "fontSize": "14px", "animationDuration": "20s", "animationDelay": "-5s"}),
+                            html.Span("C=C-C", className="analysis-chem-particle", style={"left": "94%", "top": "86%", "fontSize": "16px", "animationDuration": "23s", "animationDelay": "-3s"}),
+                        ],
+                    ),
                     # ---------- Home / Landing view ----------
                     html.Div(
                         id="view_home",
@@ -114,6 +185,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         style={"display": "block", "backgroundColor": "#0b1220", "padding": "8px", "borderRadius": "12px", "position": "relative", "overflow": "hidden"},
                         children=[
                             html.Div(
+                                className="home-hero-panel",
                                 style={
                                     "background": "linear-gradient(125deg, #0f172a 0%, #1e293b 45%, #2563eb 100%)",
                                     "borderRadius": "16px",
@@ -125,6 +197,7 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                 },
                                 children=[
                                     html.Div(
+                                        className="home-hero-kicker",
                                         style={
                                             "display": "inline-block",
                                             "padding": "5px 10px",
@@ -151,20 +224,44 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                         style={"margin": "0 0 14px 0", "fontSize": "16px", "maxWidth": "920px", "opacity": 0.95},
                                     ),
                                     html.Div(
-                                        style={"display": "flex", "gap": "10px", "flexWrap": "wrap", "marginTop": "8px"},
-                                        children=[
-                                            html.Button("Start Analysis (Explore)", id="home_go_explore", n_clicks=0, style={"padding": "10px 16px", "borderRadius": "10px", "border": "none", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "#f8fafc", "color": "#0f172a"}),
-                                            html.Button("Open Q1", id="home_go_q1", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
-                                            html.Button("Open Q3", id="home_go_q3", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
-                                            html.Button("Open Q4", id="home_go_q4", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
-                                            html.Button("Open Q5", id="home_go_q5", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
-                                            html.Button("Open Q6", id="home_go_q6", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
-                                            html.Button("Open Q7", id="home_go_q7", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
-                                            html.Button("Open Q8", id="home_go_q8", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
-                                            html.Button("Open Q9", id="home_go_q9", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
-                                            html.Button("Open Q10", id="home_go_q10", n_clicks=0, style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
-                                        ],
                                         id="home_hero_buttons",
+                                        className="analysis-menu analysis-menu--closed",
+                                        style={"display": "flex", "gap": "10px", "alignItems": "center", "marginTop": "8px"},
+                                        children=[
+                                            html.Button(
+                                                "Explore",
+                                                id="home_go_explore",
+                                                n_clicks=0,
+                                                className="analysis-menu-explore",
+                                                style={"padding": "10px 16px", "borderRadius": "10px", "border": "none", "fontWeight": "700", "cursor": "pointer", "backgroundColor": "#f8fafc", "color": "#0f172a"},
+                                            ),
+                                            html.Div(
+                                                className="analysis-menu-question-shell",
+                                                children=[
+                                                    html.Button(
+                                                        "Analysis ▸",
+                                                        id="home_toggle_analysis_menu",
+                                                        n_clicks=0,
+                                                        className="analysis-menu-toggle",
+                                                        style={"padding": "10px 16px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.45)", "fontWeight": "700", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"},
+                                                    ),
+                                                    html.Div(
+                                                        className="analysis-menu-items",
+                                                        children=[
+                                                            html.Button("Open Q1", id="home_go_q1", n_clicks=0, className="analysis-menu-item", style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                                            html.Button("Open Q3", id="home_go_q3", n_clicks=0, className="analysis-menu-item", style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                                            html.Button("Open Q4", id="home_go_q4", n_clicks=0, className="analysis-menu-item", style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                                            html.Button("Open Q5", id="home_go_q5", n_clicks=0, className="analysis-menu-item", style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                                            html.Button("Open Q6", id="home_go_q6", n_clicks=0, className="analysis-menu-item", style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                                            html.Button("Open Q7", id="home_go_q7", n_clicks=0, className="analysis-menu-item", style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                                            html.Button("Open Q8", id="home_go_q8", n_clicks=0, className="analysis-menu-item", style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                                            html.Button("Open Q9", id="home_go_q9", n_clicks=0, className="analysis-menu-item", style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                                            html.Button("Open Q10", id="home_go_q10", n_clicks=0, className="analysis-menu-item", style={"padding": "10px 14px", "borderRadius": "10px", "border": "1px solid rgba(255,255,255,0.4)", "fontWeight": "600", "cursor": "pointer", "backgroundColor": "transparent", "color": "#f8fafc"}),
+                                                        ],
+                                                    ),
+                                                ],
+                                            ),
+                                        ],
                                     ),
                                 ],
                             ),
@@ -405,6 +502,27 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                     html.Span("C-N", className="chem-particle", style={"left": "72%", "top": "56%", "fontSize": "18px", "animationDuration": "10s", "animationDelay": "-7s", "color": "rgba(165,180,252,0.55)"}),
                                     html.Span("O-H", className="chem-particle", style={"left": "86%", "top": "20%", "fontSize": "15px", "animationDuration": "12s", "animationDelay": "-6s", "color": "rgba(251,113,133,0.55)"}),
                                     html.Span("H-N-H", className="chem-particle", style={"left": "80%", "top": "78%", "fontSize": "14px", "animationDuration": "16s", "animationDelay": "-3s", "color": "rgba(147,197,253,0.55)"}),
+                                ],
+                            ),
+                            html.Div(
+                                id="home_theme_selector",
+                                style={
+                                    "position": "absolute",
+                                    "left": "16px",
+                                    "bottom": "36px",
+                                    "zIndex": 4,
+                                    "display": "flex",
+                                    "gap": "6px",
+                                    "padding": "5px",
+                                    "borderRadius": "999px",
+                                    "backgroundColor": "rgba(255,255,255,0.10)",
+                                    "backdropFilter": "blur(6px)",
+                                },
+                                children=[
+                                    html.Button("Theme Alpi", id="home_theme_custom", n_clicks=0, className="theme-chip theme-chip--active", style={"padding": "7px 10px", "borderRadius": "999px", "border": "1px solid rgba(255,255,255,0.45)", "backgroundColor": "rgba(255,255,255,0.18)", "color": "#f8fafc", "fontWeight": "600", "fontSize": "12px", "cursor": "pointer"}),
+                                    html.Button("Theme Sefa", id="home_theme_a", n_clicks=0, className="theme-chip", style={"padding": "7px 10px", "borderRadius": "999px", "border": "1px solid rgba(255,255,255,0.35)", "backgroundColor": "transparent", "color": "#f8fafc", "fontWeight": "600", "fontSize": "12px", "cursor": "pointer"}),
+                                    html.Button("Theme Cakir", id="home_theme_b", n_clicks=0, className="theme-chip", style={"padding": "7px 10px", "borderRadius": "999px", "border": "1px solid rgba(255,255,255,0.35)", "backgroundColor": "transparent", "color": "#f8fafc", "fontWeight": "600", "fontSize": "12px", "cursor": "pointer"}),
+                                    html.Button("Theme Emre", id="home_theme_c", n_clicks=0, className="theme-chip", style={"padding": "7px 10px", "borderRadius": "999px", "border": "1px solid rgba(255,255,255,0.35)", "backgroundColor": "transparent", "color": "#f8fafc", "fontWeight": "600", "fontSize": "12px", "cursor": "pointer"}),
                                 ],
                             ),
                         ],
@@ -722,6 +840,11 @@ def build_layout(app_title: str, origin_options: list[dict]):
                             dcc.Store(id="q6_selected_feature"),
                             dcc.Store(id="q6_card_open", data=False),
                             html.H3("Q6: Which ingredients dominate the final product?", style={"marginTop": 0}),
+                            html.P(
+                                "This view breaks each selected feature into ingredient-level contributions, so you can identify "
+                                "which raw components drive the final product signal and how dominant each ingredient is.",
+                                style={"margin": "0 0 10px 0", "color": "#444", "maxWidth": "900px"},
+                            ),
 
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
@@ -830,6 +953,12 @@ def build_layout(app_title: str, origin_options: list[dict]):
                             html.H3(
                                 "Q7: Enriched features (final product > sum of ingredient intensities)",
                                 style={"marginTop": 0},
+                            ),
+                            html.P(
+                                "This view identifies features whose final-product signal exceeds the summed ingredient signal. "
+                                "Use it to spot candidate enrichment patterns and compare whether enrichment is stronger in Hepar "
+                                "or Hepeel.",
+                                style={"margin": "0 0 10px 0", "color": "#444", "maxWidth": "900px"},
                             ),
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
@@ -1038,6 +1167,12 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                 style={"marginTop": 0},
                             ),
                             html.P(
+                                "This comparison separates shared features from product-unique chemistry, helping you see where "
+                                "the two products overlap and where each one has distinct signals. Click bars to inspect "
+                                "feature-level details.",
+                                style={"margin": "0 0 8px 0", "color": "#444", "maxWidth": "900px"},
+                            ),
+                            html.P(
                                 "Color legend: Shared (both), Unique to Hepar, Unique to Hepeel",
                                 style={"margin": "0 0 8px 0", "color": "#444"},
                             ),
@@ -1106,7 +1241,15 @@ def build_layout(app_title: str, origin_options: list[dict]):
                         className="page-view",
                         style=HIDE,
                         children=[
-                            html.H3("Q10: (Q10  )", style={"marginTop": 0}),
+                            dcc.Store(id="q10_selected_feature"),
+                            dcc.Store(id="q10_card_open", data=False),
+                            html.H3("Q10: Which features show significantly different intensities between Hepar and Hepeel? Are these differences driven mainly by plant components or animal?", style={"marginTop": 0}),
+                            html.P(
+                                "This module quantifies the strongest Hepar-Hepeel differences and ranks features by effect size. "
+                                "Use the threshold to focus on robust drivers, then inspect the breakdown chart to understand "
+                                "which features contribute most to product separation.",
+                                style={"margin": "0 0 10px 0", "color": "#444", "maxWidth": "900px"},
+                            ),
 
                             html.Div(
                                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
@@ -1147,6 +1290,41 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                 ],
                             ),
                             dcc.Graph(id="q10_breakdown", style={"height": "320px"}),
+                            html.Div(
+                                id="q10_feature_card",
+                                style={"display": "none"},
+                                children=[
+                                    html.Div(
+                                        style={
+                                            "border": "1px solid #ddd",
+                                            "borderRadius": "8px",
+                                            "padding": "10px 12px",
+                                            "backgroundColor": "#f9fafb",
+                                            "position": "relative",
+                                            "marginTop": "8px",
+                                        },
+                                        children=[
+                                            html.Button(
+                                                "x",
+                                                id="q10_close_card",
+                                                n_clicks=0,
+                                                title="Close",
+                                                style={
+                                                    "position": "absolute",
+                                                    "top": "8px",
+                                                    "right": "10px",
+                                                    "border": "none",
+                                                    "background": "transparent",
+                                                    "fontSize": "18px",
+                                                    "cursor": "pointer",
+                                                    "lineHeight": "16px",
+                                                },
+                                            ),
+                                            html.Div(id="q10_card_body", style={"paddingRight": "18px"}),
+                                        ],
+                                    )
+                                ],
+                            ),
                             html.Div(
                                 style={"overflowX": "auto", "width": "100%", "marginTop": "10px"},
                                 children=[

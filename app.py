@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 import re
@@ -126,6 +126,26 @@ def extract_pubchem_cids(val) -> list[str]:
 
 def has_pubchem(val) -> bool:
     return len(extract_pubchem_cids(val)) > 0
+
+
+def render_pubchem_links(val):
+    cids = extract_pubchem_cids(val)
+    if not cids:
+        return ["NA"]
+    children = []
+    for i, cid in enumerate(cids):
+        if i > 0:
+            children.append(", ")
+        children.append(
+            html.A(
+                cid,
+                href=f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}",
+                target="_blank",
+                rel="noopener noreferrer",
+                style={"textDecoration": "underline"},
+            )
+        )
+    return children
 
 
 def present_in_any(summary_df: pd.DataFrame, feature_ids: set[str], cols: list[str], threshold: float = 0) -> set[str]:
@@ -672,6 +692,44 @@ def build_app() -> Dash:
         ]
 
     @app.callback(
+        Output("home_hero_buttons", "className"),
+        Output("home_toggle_analysis_menu", "children"),
+        Input("home_toggle_analysis_menu", "n_clicks"),
+    )
+    def toggle_home_analysis_menu(n_clicks):
+        is_open = bool(n_clicks and n_clicks % 2 == 1)
+        if is_open:
+            return "analysis-menu analysis-menu--open", "Analysis ▾"
+        return "analysis-menu analysis-menu--closed", "Analysis ▸"
+
+    @app.callback(
+        Output("app_root", "className"),
+        Output("home_theme_custom", "className"),
+        Output("home_theme_a", "className"),
+        Output("home_theme_b", "className"),
+        Output("home_theme_c", "className"),
+        Input("home_theme_custom", "n_clicks"),
+        Input("home_theme_a", "n_clicks"),
+        Input("home_theme_b", "n_clicks"),
+        Input("home_theme_c", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def switch_home_theme(custom_clicks, theme_a_clicks, theme_b_clicks, theme_c_clicks):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else ""
+        theme_map = {
+            "home_theme_custom": "theme-custom",
+            "home_theme_a": "theme-a",
+            "home_theme_b": "theme-b",
+            "home_theme_c": "theme-c",
+        }
+        selected = theme_map.get(trigger, "theme-custom")
+        custom_cls = "theme-chip theme-chip--active" if selected == "theme-custom" else "theme-chip"
+        a_cls = "theme-chip theme-chip--active" if selected == "theme-a" else "theme-chip"
+        b_cls = "theme-chip theme-chip--active" if selected == "theme-b" else "theme-chip"
+        c_cls = "theme-chip theme-chip--active" if selected == "theme-c" else "theme-chip"
+        return selected, custom_cls, a_cls, b_cls, c_cls
+
+    @app.callback(
         Output("product", "value"),
         Input("home_product_toggle_button", "n_clicks"),
         State("product", "value"),
@@ -691,6 +749,33 @@ def build_app() -> Dash:
         if str(page_select) == "home":
             return {"display": "none"}
         return {"display": "block"}
+
+    @app.callback(
+        Output("analysis_chem_bg", "style"),
+        Input("page_select", "value"),
+    )
+    def toggle_analysis_background(page_select):
+        if str(page_select) == "home":
+            return {"display": "none"}
+        return {"display": "block"}
+
+    @app.callback(
+        Output("main_content_shell", "className"),
+        Output("page_transition_state", "data"),
+        Input("page_select", "value"),
+        State("page_transition_state", "data"),
+    )
+    def update_transition_mode(page_select, transition_state):
+        state = transition_state or {"prev": "home", "flip": 0}
+        prev_page = str(state.get("prev", "home"))
+        flip = int(state.get("flip", 0))
+        current_page = str(page_select or "home")
+
+        cls = "main-content-shell transition-none"
+        if prev_page == "home" and current_page != "home":
+            cls = "main-content-shell transition-zoom-in"
+
+        return cls, {"prev": current_page, "flip": flip}
 
     @app.callback(
         Output("page_select", "value"),
@@ -735,6 +820,32 @@ def build_app() -> Dash:
             "analysis_back_home": "home",
         }
         return route_map.get(trigger, "home")
+
+    @app.callback(
+        Output("page_select", "value", allow_duplicate=True),
+        Input("analysis_prev_question", "n_clicks"),
+        Input("analysis_next_question", "n_clicks"),
+        State("page_select", "value"),
+        prevent_initial_call=True,
+    )
+    def sidebar_question_step(prev_clicks, next_clicks, current_page):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else ""
+        question_order = ["q1", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"]
+
+        current = str(current_page or "")
+        if current not in question_order:
+            if trigger == "analysis_next_question":
+                return question_order[0]
+            if trigger == "analysis_prev_question":
+                return question_order[-1]
+            return no_update
+
+        idx = question_order.index(current)
+        if trigger == "analysis_next_question":
+            return question_order[(idx + 1) % len(question_order)]
+        if trigger == "analysis_prev_question":
+            return question_order[(idx - 1) % len(question_order)]
+        return no_update
 
 
     # ---- Q6: interaction state (selected feature + closable card) ----
@@ -905,7 +1016,7 @@ def build_app() -> Dash:
                     html.Div(f"Dominant raw intensity: {dominant_raw:,.0f}" if pd.notna(dominant_raw) else "Dominant raw intensity: NA"),
                     html.Div(f"Name: {r.get('name', 'NA')}"),
                     html.Div(f"Molecular Formula: {r.get('molecularFormula', 'NA')}"),
-                    html.Div(f"PubChem IDs: {r.get('pubchemids', 'NA')}"),
+                    html.Div(["PubChem IDs: ", *render_pubchem_links(r.get("pubchemids", None))]),
                     html.Div(f"NPC Pathway: {r.get('NPC.pathway', 'NA')}"),
                 ])
                 card_style = {"display": "block", "marginTop": "6px"}
@@ -1231,7 +1342,7 @@ def build_app() -> Dash:
                     html.Div(f"Hepeel final: {_fmt_int(rr.get('hepeel_final_product', np.nan))} | sum(comp): {_fmt_int(rr.get('hepeel_ingredient_sum', np.nan))}") if rr is not None else html.Div("Hepeel final: NA"),
                     html.Div(f"Name: {rr.get('name', 'NA') if rr is not None else 'NA'}"),
                     html.Div(f"Formula: {rr.get('molecularFormula', 'NA') if rr is not None else 'NA'}"),
-                    html.Div(f"PubChem: {rr.get('pubchemids', 'NA') if rr is not None else 'NA'}"),
+                    html.Div(["PubChem: ", *render_pubchem_links(rr.get("pubchemids", None) if rr is not None else None)]),
                 ])
                 card_style = {"display": "block", "marginTop": "6px"}
 
@@ -1622,7 +1733,7 @@ def build_app() -> Dash:
                     html.Div(f"Hepeel final: {_fmt_int(rr.get(hepeel_final, np.nan))} | max(comp): {_fmt_int(rr.get('hepeel_comp_max', np.nan))}"),
                     html.Div(f"Name: {rr.get('name', '-')}"),
                     html.Div(f"Formula: {rr.get('molecularFormula', '-')}"),
-                    html.Div(f"PubChem: {rr.get('pubchemids', '-')}"),
+                    html.Div(["PubChem: ", *render_pubchem_links(rr.get("pubchemids", None))]),
                 ])
                 card_style = {"display": "block", "marginTop": "6px"}
 
@@ -1815,7 +1926,7 @@ def build_app() -> Dash:
                     html.Div(f"log10(max intensity): {float(r.get('q9_log_intensity', np.nan)):.6f}" if pd.notna(r.get("q9_log_intensity", np.nan)) else "log10(max intensity): NA"),
                     html.Div(f"Name: {r.get('name', 'NA')}"),
                     html.Div(f"Molecular Formula: {r.get('molecularFormula', 'NA')}"),
-                    html.Div(f"PubChem IDs: {r.get('pubchemids', 'NA')}"),
+                    html.Div(["PubChem IDs: ", *render_pubchem_links(r.get("pubchemids", None))]),
                     html.Div(f"NPC Pathway: {r.get('NPC.pathway', 'NA')}"),
                 ])
                 card_style = {
@@ -1832,6 +1943,24 @@ def build_app() -> Dash:
         cols = [{"name": c, "id": c} for c in q9_table_df.columns]
         return fig, stats, q9_table_df.to_dict("records"), cols, card_body, card_style
 
+    # ---- Q10: interaction state (selected feature + closable card) ----
+    @app.callback(
+        Output("q10_selected_feature", "data"),
+        Output("q10_card_open", "data"),
+        Input("q10_graph", "clickData"),
+        Input("q10_close_card", "n_clicks"),
+        State("q10_selected_feature", "data"),
+        State("q10_card_open", "data"),
+        prevent_initial_call=True,
+    )
+    def update_q10_selection(q10_clickData, q10_close_clicks, current_selected, current_open):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else None
+        if trigger == "q10_close_card":
+            return no_update, False
+        if trigger == "q10_graph" and q10_clickData and q10_clickData.get("points"):
+            return str(q10_clickData["points"][0].get("x")), True
+        return current_selected, current_open
+
     # ---- Q10: Hepar vs Hepeel final difference + plant/animal driver breakdown ----
     @app.callback(
         Output("q10_graph", "figure"),
@@ -1839,14 +1968,17 @@ def build_app() -> Dash:
         Output("q10_table", "data"),
         Output("q10_table", "columns"),
         Output("q10_stats", "children"),
+        Output("q10_card_body", "children"),
+        Output("q10_feature_card", "style"),
         Input("feature_search", "value"),
         Input("only_pubchem", "value"),
         Input("global_intensity_log_range", "value"),
         Input("q10_top_n", "value"),
         Input("q10_diff_log_thr", "value"),
-        Input("q10_graph", "clickData"),
+        Input("q10_selected_feature", "data"),
+        Input("q10_card_open", "data"),
     )
-    def update_q10(feature_search, only_pubchem_vals, global_intensity_log_range, q10_top_n, q10_diff_log_thr, q10_click):
+    def update_q10(feature_search, only_pubchem_vals, global_intensity_log_range, q10_top_n, q10_diff_log_thr, q10_selected_feature, q10_card_open):
         sdf = summary_df.copy()
         sdf["feature"] = sdf["feature"].astype(str)
 
@@ -1857,7 +1989,7 @@ def build_app() -> Dash:
         except KeyError as e:
             fig = px.bar(title=f"Q10: Missing final columns ({e})")
             empty = px.bar(title="Q10: click a feature to see breakdown")
-            return fig, empty, [], [], "Q10: missing final product columns"
+            return fig, empty, [], [], "Q10: missing final product columns", html.Div("Click a feature in the chart to open details."), {"display": "none"}
 
         # numeric conversion
         sdf[hepar_final] = pd.to_numeric(sdf[hepar_final], errors="coerce").fillna(0)
@@ -1932,8 +2064,9 @@ def build_app() -> Dash:
             if c in sdf.columns:
                 sdf[c] = pd.to_numeric(sdf[c], errors="coerce").fillna(0)
 
-        if q10_click and "points" in q10_click and q10_click["points"]:
-            f_clicked = str(q10_click["points"][0].get("x"))
+        selected_feature = str(q10_selected_feature) if q10_selected_feature else None
+        if selected_feature:
+            f_clicked = selected_feature
             row = sdf[sdf["feature"] == f_clicked]
             if not row.empty:
                 r = row.iloc[0]
@@ -1970,7 +2103,25 @@ def build_app() -> Dash:
         columns = [{"name": c, "id": c} for c in out_df.columns]
 
         stats = f"Q10 | shown features: {len(out_df):,} | threshold: {thr:g}"
-        return fig, breakdown, out_df.to_dict("records"), columns, stats
+        card_body = html.Div("Click a feature in the chart to open details.")
+        card_style = {"display": "none"}
+        if selected_feature and bool(q10_card_open):
+            rows = sdf[sdf["feature"].astype(str) == selected_feature]
+            if not rows.empty:
+                rr = rows.iloc[0]
+                card_body = html.Div([
+                    html.H4(f"Selected feature: {selected_feature}", style={"margin": "0 0 8px 0"}),
+                    html.Div(f"|Hepar - Hepeel|: {float(rr.get('q10_diff_final', 0.0)):,.0f}"),
+                    html.Div(f"Hepar final intensity: {float(rr.get(hepar_final, 0.0)):,.0f}"),
+                    html.Div(f"Hepeel final intensity: {float(rr.get(hepeel_final, 0.0)):,.0f}"),
+                    html.Div(f"Name: {rr.get('name', 'NA')}"),
+                    html.Div(f"Molecular Formula: {rr.get('molecularFormula', 'NA')}"),
+                    html.Div(["PubChem IDs: ", *render_pubchem_links(rr.get("pubchemids", None))]),
+                    html.Div(f"NPC Pathway: {rr.get('NPC.pathway', 'NA')}"),
+                ])
+                card_style = {"display": "block", "marginTop": "6px"}
+
+        return fig, breakdown, out_df.to_dict("records"), columns, stats, card_body, card_style
 
 
     # ---- Global: sync intensity slider range to selected product ----
