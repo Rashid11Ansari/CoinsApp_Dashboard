@@ -7,8 +7,23 @@ from dash.dependencies import Input, Output
 # ----------------------------------
 # Load Data
 # ----------------------------------
-EXCEL_PATH = "Product_features_summary_annotation.xlsx"
-df = pd.read_excel(EXCEL_PATH)
+import pandas as pd
+from pathlib import Path
+
+# -------------------------------
+# Load Data
+# -------------------------------
+
+import pandas as pd
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+EXCEL_PATH = BASE_DIR / "data" / "Product_features_summary_annotation.xlsx"
+
+df = pd.read_excel(EXCEL_PATH, header=1)
+
+print(df.columns.tolist())
+print(df.head())
 
 # ----------------------------------
 # Ingredient Columns (WIDE FORMAT)

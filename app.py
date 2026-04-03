@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 import re
@@ -22,7 +22,9 @@ _PUBCHEM_RE = re.compile(r"\d+")
 
 # Final product columns (authoritative)
 HEPAR_FINAL_COL = "Hepar.comp.Ampoules..Bulk.mat.52324."
+HEPAR_FINAL_COL = "Hepar.comp.Ampoules..Bulk.mat.52324."
 
+HEPEEL_FINAL_COL = "Hepeel.ampoule.solution..Bulk"
 HEPEEL_FINAL_COL = "Hepeel.ampoule.solution..Bulk"
 
 # =============================
@@ -687,6 +689,7 @@ def build_app() -> Dash:
         # Resolve final product column for selected product
         try:
             final_col = _find_col(sdf, HEPAR_FINAL_COL) if "hepar" in str(product).lower() else _find_col(sdf, HEPEEL_FINAL_COL)
+            final_col = _find_col(sdf, HEPAR_FINAL_COL) if "hepar" in str(product).lower() else _find_col(sdf, HEPEEL_FINAL_COL)
         except KeyError as e:
             fig = px.bar(title=f"Q7: Missing final product column ({e})")
             return fig, [], [], "Q7: Missing final product column.", ""
@@ -823,6 +826,8 @@ def build_app() -> Dash:
 
         # Resolve required columns (best-effort matching)
         try:
+            hepar_final = _find_col(sdf, HEPAR_FINAL_COL)
+            hepeel_final = _find_col(sdf, HEPEEL_FINAL_COL)
             hepar_final = _find_col(sdf, HEPAR_FINAL_COL)
             hepeel_final = _find_col(sdf, HEPEEL_FINAL_COL)
         except KeyError as e:
@@ -1039,6 +1044,8 @@ def build_app() -> Dash:
 
         # final product columns (Hepar vs Hepeel)
         try:
+            hepar_final = _find_col(sdf, HEPAR_FINAL_COL)
+            hepeel_final = _find_col(sdf, HEPEEL_FINAL_COL)
             hepar_final = _find_col(sdf, HEPAR_FINAL_COL)
             hepeel_final = _find_col(sdf, HEPEEL_FINAL_COL)
         except KeyError as e:
