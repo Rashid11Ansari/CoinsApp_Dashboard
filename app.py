@@ -6,9 +6,11 @@ import re
 
 import pandas as pd
 import numpy as np
-from dash import Dash, dcc, html, Input, Output, dash_table
+from dash import Dash, dcc, html, Input, Output, State, dash_table, callback_context, no_update
 import plotly.express as px
+import plotly.graph_objects as go
 import plotly.io as pio
+from plotly.subplots import make_subplots
 
 # Guard against bad/unsupported default templates causing px.bar() to crash
 pio.templates.default = "plotly"
@@ -21,17 +23,15 @@ APP_TITLE = "MS Feature Explorer (Origin-aware)"
 _PUBCHEM_RE = re.compile(r"\d+")
 
 # Final product columns (authoritative)
-HEPAR_FINAL_COL = "Hepar.comp.Ampoules..Bulk.mat.52324."
-HEPAR_FINAL_COL = "Hepar.comp.Ampoules..Bulk.mat.52324."
+Q8_HEPAR_FINAL_COL = "Hepar.comp.Ampoules..Bulk.mat.52324."
 
-HEPEEL_FINAL_COL = "Hepeel.ampoule.solution..Bulk"
-HEPEEL_FINAL_COL = "Hepeel.ampoule.solution..Bulk"
+Q8_HEPEEL_FINAL_COL = "Hepeel.ampoule.solution..Bulk"
 
 # =============================
 # App structure
 # =============================
 # - Helpers: column matching, PubChem parsing, origin set construction
-# - Per-question helpers: Q3/Q4/Q5/Q6/Q7/Q8/Q10
+# - Per-question helpers: Q3/Q4/Q5/Q6/Q7/Q8/Q9/Q10
 # - build_app(): loads data, defines layout, and registers Dash callbacks
 #
 # NOTE: Component column lists come from data_loader via `groups` (populated from JSON config).
@@ -70,6 +70,44 @@ def _q8_state(prod: float, comp_max: float, amp_thr: float) -> str:
     return "unchanged"
 
 
+def _q8_empty_figure(msg: str) -> go.Figure:
+    fig = go.Figure()
+    fig.add_shape(
+        type="rect",
+        xref="paper",
+        yref="paper",
+        x0=0.12,
+        x1=0.88,
+        y0=0.3,
+        y1=0.7,
+        line={"color": "#cbd5e1", "width": 1, "dash": "dot"},
+        fillcolor="rgba(241,245,249,0.7)",
+    )
+    fig.add_annotation(
+        text=msg,
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        font={"size": 13, "color": "#475569"},
+    )
+    fig.update_layout(
+        template="plotly",
+        margin=dict(l=20, r=20, t=40, b=40),
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+    )
+    return fig
+
+
+def _q8_log10_ratio_series(sr: pd.Series) -> np.ndarray:
+    r = pd.to_numeric(sr, errors="coerce").replace(0, np.nan).clip(lower=1e-300)
+    return np.log10(r.to_numpy(dtype=float))
+
+
 def extract_pubchem_cids(val) -> list[str]:
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return []
@@ -88,6 +126,26 @@ def extract_pubchem_cids(val) -> list[str]:
 
 def has_pubchem(val) -> bool:
     return len(extract_pubchem_cids(val)) > 0
+
+
+def render_pubchem_links(val):
+    cids = extract_pubchem_cids(val)
+    if not cids:
+        return ["NA"]
+    children = []
+    for i, cid in enumerate(cids):
+        if i > 0:
+            children.append(", ")
+        children.append(
+            html.A(
+                cid,
+                href=f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}",
+                target="_blank",
+                rel="noopener noreferrer",
+                style={"textDecoration": "underline"},
+            )
+        )
+    return children
 
 
 def present_in_any(summary_df: pd.DataFrame, feature_ids: set[str], cols: list[str], threshold: float = 0) -> set[str]:
@@ -488,6 +546,8 @@ def build_app() -> Dash:
     app.layout = build_layout(APP_TITLE, origin_options)
     # ---- Navigation: show/hide views and set origin_filter ----
     @app.callback(
+        Output("app_root", "style"),
+        Output("view_home", "style"),
         Output("view_explore", "style"),
         Output("view_q1", "style"),
         Output("view_q3", "style"),
@@ -496,6 +556,7 @@ def build_app() -> Dash:
         Output("view_q6", "style"),
         Output("view_q7", "style"),
         Output("view_q8", "style"),
+        Output("view_q9", "style"),
         Output("view_q10", "style"),
         Output("origin_filter", "value"),
         Input("page_select", "value"),
@@ -503,40 +564,313 @@ def build_app() -> Dash:
 
     def switch_view(page_select: str):
         show = {"display": "block"}
+        show_home = {"display": "block", "backgroundColor": "#0b1220", "padding": "10px", "borderRadius": "12px"}
         hide = {"display": "none"}
+
+        analysis_root_style = {
+            "display": "flex",
+            "minHeight": "100vh",
+            "alignItems": "stretch",
+            "gap": "12px",
+            "maxWidth": "1720px",
+            "margin": "0 auto",
+            "padding": "10px",
+        }
+        home_root_style = {
+            "display": "flex",
+            "minHeight": "100vh",
+            "alignItems": "stretch",
+            "gap": "0px",
+            "maxWidth": "100%",
+            "margin": "0",
+            "padding": "0",
+            "backgroundColor": "#0b1220",
+        }
 
         origin_val = "All product features"
 
-        # order:
-        # explore, q1, q3, q4, q5, q6, q7, q8, q10, origin_filter,
+        def _pack(root_style, home_s, explore_s, q1_s, q3_s, q4_s, q5_s, q6_s, q7_s, q8_s, q9_s, q10_s, origin):
+            return (
+                root_style,
+                home_s,
+                explore_s,
+                q1_s,
+                q3_s,
+                q4_s,
+                q5_s,
+                q6_s,
+                q7_s,
+                q8_s,
+                q9_s,
+                q10_s,
+                origin,
+            )
 
         if not page_select:
-            return show, hide, hide, hide, hide, hide, hide, hide, hide, origin_val
+            return _pack(home_root_style, show_home, hide, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
 
-        # Explore shortcut
         if isinstance(page_select, str) and page_select.startswith("explore::"):
             origin_val = page_select.split("::", 1)[1]
-            return show, hide, hide, hide, hide, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, show, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
+        if page_select == "home":
+            return _pack(home_root_style, show_home, hide, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q1":
-            return hide, show, hide, hide, hide, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, show, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q3":
-            return hide, hide, show, hide, hide, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, show, hide, hide, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q4":
-            return hide, hide, hide, show, hide, hide, hide, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, show, hide, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q5":
-            return hide, hide, hide, hide, show, hide, hide, hide,  hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, show, hide, hide, hide, hide, hide, origin_val)
         if page_select == "q6":
-            return hide, hide, hide, hide, hide, show, hide, hide,  hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, show, hide, hide, hide, hide, origin_val)
         if page_select == "q7":
-            return hide, hide, hide, hide, hide, hide, show, hide, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, hide, show, hide, hide, hide, origin_val)
         if page_select == "q8":
-            return hide, hide, hide, hide, hide, hide, hide, show, hide, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, hide, hide, show, hide, hide, origin_val)
+        if page_select == "q9":
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, hide, hide, hide, show, hide, origin_val)
         if page_select == "q10":
-            return hide, hide, hide, hide, hide, hide, hide, hide, show, origin_val
+            return _pack(analysis_root_style, hide, hide, hide, hide, hide, hide, hide, hide, hide, hide, show, origin_val)
 
-        # fallback -> explore
-        return show, hide, hide, hide, hide, hide, hide, hide, hide, origin_val
+        return _pack(home_root_style, show_home, hide, hide, hide, hide, hide, hide, hide, hide, hide, hide, origin_val)
 
+    @app.callback(
+        Output("home_quick_stats_dynamic", "children"),
+        Input("product", "value"),
+    )
+    def update_home_quick_stats(product):
+        hepar_df = data["Hepar"].features.copy()
+        hepeel_df = data["Hepeel"].features.copy()
+        hepar_ids = set(hepar_df["feature"].astype(str).dropna())
+        hepeel_ids = set(hepeel_df["feature"].astype(str).dropna())
+        shared_n = len(hepar_ids & hepeel_ids)
+        uniq_hepar_n = len(hepar_ids - hepeel_ids)
+        uniq_hepeel_n = len(hepeel_ids - hepar_ids)
+
+        current_n = 0
+        if product in data and "feature" in data[product].features.columns:
+            current_n = int(data[product].features["feature"].astype(str).nunique())
+
+        stats = [
+            ("Features in selection", f"{current_n:,}"),
+            ("Shared features", f"{shared_n:,}"),
+            ("Unique to Hepar", f"{uniq_hepar_n:,}"),
+            ("Unique to Hepeel", f"{uniq_hepeel_n:,}"),
+        ]
+
+        cards = []
+        for label, value in stats:
+            cards.append(
+                html.Div(
+                    className="home-stat-card",
+                    style={
+                        "border": "1px solid #e5e7eb",
+                        "borderRadius": "12px",
+                        "padding": "12px",
+                        "backgroundColor": "#ffffff",
+                        "boxShadow": "0 2px 10px rgba(15,23,42,0.06)",
+                    },
+                    children=[
+                        html.Div(label, style={"fontSize": "12px", "color": "#64748b", "fontWeight": "600"}),
+                        html.Div(value, style={"fontSize": "22px", "fontWeight": "700", "color": "#0f172a", "marginTop": "2px"}),
+                    ],
+                )
+            )
+        return cards
+
+    @app.callback(
+        Output("home_product_toggle_button", "children"),
+        Input("product", "value"),
+    )
+    def update_home_product_toggle_button(product):
+        product_str = str(product) if product else "Hepar"
+        return [
+            html.Div("Selected product", style={"fontSize": "12px", "color": "#64748b", "fontWeight": "600", "marginBottom": "6px"}),
+            html.Div(product_str, style={"fontSize": "22px", "fontWeight": "700", "color": "#0f172a", "lineHeight": 1.1}),
+            html.Div("Click to switch product", style={"fontSize": "11px", "fontStyle": "italic", "color": "#64748b", "marginTop": "6px"}),
+        ]
+
+    @app.callback(
+        Output("home_hero_buttons", "className"),
+        Output("home_toggle_analysis_menu", "children"),
+        Input("home_toggle_analysis_menu", "n_clicks"),
+    )
+    def toggle_home_analysis_menu(n_clicks):
+        is_open = bool(n_clicks and n_clicks % 2 == 1)
+        if is_open:
+            return "analysis-menu analysis-menu--open", "Analysis ▾"
+        return "analysis-menu analysis-menu--closed", "Analysis ▸"
+
+    @app.callback(
+        Output("app_root", "className"),
+        Output("home_theme_custom", "className"),
+        Output("home_theme_a", "className"),
+        Output("home_theme_b", "className"),
+        Output("home_theme_c", "className"),
+        Input("home_theme_custom", "n_clicks"),
+        Input("home_theme_a", "n_clicks"),
+        Input("home_theme_b", "n_clicks"),
+        Input("home_theme_c", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def switch_home_theme(custom_clicks, theme_a_clicks, theme_b_clicks, theme_c_clicks):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else ""
+        theme_map = {
+            "home_theme_custom": "theme-custom",
+            "home_theme_a": "theme-a",
+            "home_theme_b": "theme-b",
+            "home_theme_c": "theme-c",
+        }
+        selected = theme_map.get(trigger, "theme-custom")
+        custom_cls = "theme-chip theme-chip--active" if selected == "theme-custom" else "theme-chip"
+        a_cls = "theme-chip theme-chip--active" if selected == "theme-a" else "theme-chip"
+        b_cls = "theme-chip theme-chip--active" if selected == "theme-b" else "theme-chip"
+        c_cls = "theme-chip theme-chip--active" if selected == "theme-c" else "theme-chip"
+        return selected, custom_cls, a_cls, b_cls, c_cls
+
+    @app.callback(
+        Output("product", "value"),
+        Input("home_product_toggle_button", "n_clicks"),
+        State("product", "value"),
+        prevent_initial_call=True,
+    )
+    def toggle_home_product(n_clicks, current_product):
+        if not n_clicks:
+            return no_update
+        current = str(current_product) if current_product else "Hepar"
+        return "Hepeel" if current == "Hepar" else "Hepar"
+
+    @app.callback(
+        Output("analysis_sidebar", "style"),
+        Input("page_select", "value"),
+    )
+    def toggle_analysis_back_button(page_select):
+        if str(page_select) == "home":
+            return {"display": "none"}
+        return {"display": "block"}
+
+    @app.callback(
+        Output("analysis_chem_bg", "style"),
+        Input("page_select", "value"),
+    )
+    def toggle_analysis_background(page_select):
+        if str(page_select) == "home":
+            return {"display": "none"}
+        return {"display": "block"}
+
+    @app.callback(
+        Output("main_content_shell", "className"),
+        Output("page_transition_state", "data"),
+        Input("page_select", "value"),
+        State("page_transition_state", "data"),
+    )
+    def update_transition_mode(page_select, transition_state):
+        state = transition_state or {"prev": "home", "flip": 0}
+        prev_page = str(state.get("prev", "home"))
+        flip = int(state.get("flip", 0))
+        current_page = str(page_select or "home")
+
+        cls = "main-content-shell transition-none"
+        if prev_page == "home" and current_page != "home":
+            cls = "main-content-shell transition-zoom-in"
+
+        return cls, {"prev": current_page, "flip": flip}
+
+    @app.callback(
+        Output("page_select", "value"),
+        Input("home_go_explore", "n_clicks"),
+        Input("home_go_q1", "n_clicks"),
+        Input("home_go_q3", "n_clicks"),
+        Input("home_go_q4", "n_clicks"),
+        Input("home_go_q5", "n_clicks"),
+        Input("home_go_q6", "n_clicks"),
+        Input("home_go_q7", "n_clicks"),
+        Input("home_go_q8", "n_clicks"),
+        Input("home_go_q9", "n_clicks"),
+        Input("home_go_q10", "n_clicks"),
+        Input("analysis_back_home", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def home_navigation_router(
+        go_explore,
+        go_q1,
+        go_q3,
+        go_q4,
+        go_q5,
+        go_q6,
+        go_q7,
+        go_q8,
+        go_q9,
+        go_q10,
+        back_home,
+    ):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else ""
+        route_map = {
+            "home_go_explore": "explore::Shared between Hepar & Hepeel",
+            "home_go_q1": "q1",
+            "home_go_q3": "q3",
+            "home_go_q4": "q4",
+            "home_go_q5": "q5",
+            "home_go_q6": "q6",
+            "home_go_q7": "q7",
+            "home_go_q8": "q8",
+            "home_go_q9": "q9",
+            "home_go_q10": "q10",
+            "analysis_back_home": "home",
+        }
+        return route_map.get(trigger, "home")
+
+    @app.callback(
+        Output("page_select", "value", allow_duplicate=True),
+        Input("analysis_prev_question", "n_clicks"),
+        Input("analysis_next_question", "n_clicks"),
+        State("page_select", "value"),
+        prevent_initial_call=True,
+    )
+    def sidebar_question_step(prev_clicks, next_clicks, current_page):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else ""
+        question_order = ["q1", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"]
+
+        current = str(current_page or "")
+        if current not in question_order:
+            if trigger == "analysis_next_question":
+                return question_order[0]
+            if trigger == "analysis_prev_question":
+                return question_order[-1]
+            return no_update
+
+        idx = question_order.index(current)
+        if trigger == "analysis_next_question":
+            return question_order[(idx + 1) % len(question_order)]
+        if trigger == "analysis_prev_question":
+            return question_order[(idx - 1) % len(question_order)]
+        return no_update
+
+
+    # ---- Q6: interaction state (selected feature + closable card) ----
+    @app.callback(
+        Output("q6_selected_feature", "data"),
+        Output("q6_card_open", "data"),
+        Input("q6_dom_bar", "clickData"),
+        Input("q6_feature_id", "value"),
+        Input("q6_close_card", "n_clicks"),
+        State("q6_selected_feature", "data"),
+        State("q6_card_open", "data"),
+        prevent_initial_call=True,
+    )
+    def update_q6_selection(q6_clickData, q6_feature_id, q6_close_clicks, current_selected, current_open):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else None
+        if trigger == "q6_close_card":
+            return no_update, False
+        if trigger == "q6_feature_id":
+            typed = str(q6_feature_id).strip() if q6_feature_id else ""
+            if typed:
+                return typed, True
+            return current_selected, current_open
+        if trigger == "q6_dom_bar" and q6_clickData and q6_clickData.get("points"):
+            return str(q6_clickData["points"][0].get("x")), True
+        return current_selected, current_open
 
     # ---- Q6: Feature-level ingredient contribution drilldown ----
     @app.callback(
@@ -545,22 +879,24 @@ def build_app() -> Dash:
         Output("q6_table", "data"),
         Output("q6_table", "columns"),
         Output("q6_stats", "children"),
+        Output("q6_card_body", "children"),
+        Output("q6_feature_card", "style"),
         Input("product", "value"),
         Input("feature_search", "value"),
         Input("only_pubchem", "value"),
         Input("global_intensity_log_range", "value"),
-        Input("q6_feature_id", "value"),
         Input("q6_top_n", "value"),
-        Input("q6_dom_bar", "clickData"),
+        Input("q6_selected_feature", "data"),
+        Input("q6_card_open", "data"),
     )
-    def update_q6(product, feature_search, only_pubchem_vals, global_intensity_log_range, q6_feature_id, q6_top_n, q6_clickData):
+    def update_q6(product, feature_search, only_pubchem_vals, global_intensity_log_range, q6_top_n, q6_selected_feature, q6_card_open):
         sdf = summary_df.copy()
         sdf["feature"] = sdf["feature"].astype(str)
 
         ingredient_cols, plant_cols, animal_cols = q6_get_ingredient_cols_for_product(product, sdf, groups)
         if not ingredient_cols:
             empty = px.bar(title="Q6: No ingredient columns matched")
-            return empty, empty, [], [], "Q6: No ingredient columns matched for this product."
+            return empty, empty, [], [], "Q6: No ingredient columns matched for this product.", html.Div("No feature selected."), {"display": "none"}
 
         # numeric conversion for ingredient cols
         for c in ingredient_cols:
@@ -612,12 +948,7 @@ def build_app() -> Dash:
         # keep UI responsive
         feat_df = feat_df.sort_values("Total_Intensityy", ascending=False).head(3000)
 
-        # typed feature overrides click
-        selected_feature = None
-        if q6_feature_id and str(q6_feature_id).strip():
-            selected_feature = str(q6_feature_id).strip()
-        elif q6_clickData and "points" in q6_clickData and q6_clickData["points"]:
-            selected_feature = str(q6_clickData["points"][0].get("x"))
+        selected_feature = str(q6_selected_feature).strip() if q6_selected_feature else None
 
         q6_dom_fig = px.bar(
             feat_df,
@@ -666,187 +997,426 @@ def build_app() -> Dash:
             f"Q6 | features after filters: {len(sdf):,} | ingredient cols matched: {len(ingredient_cols)} "
             f"(plant={len(plant_cols)}, animal={len(animal_cols)})"
         )
-        return q6_dom_fig, contrib_fig, table_df.to_dict("records"), cols, stats
+        card_body = html.Div("Grafikte bir feature secerek detaylarini gorebilirsiniz.")
+        card_style = {"display": "none"}
+        if selected_feature and bool(q6_card_open):
+            selected_rows = sdf[sdf["feature"].astype(str) == selected_feature]
+            if not selected_rows.empty:
+                r = selected_rows.iloc[0]
+                feat_total_row = feat_df[feat_df["feature"].astype(str) == selected_feature]
+                total_raw = float(feat_total_row["Total_Intensityy"].iloc[0]) if not feat_total_row.empty else float("nan")
+                total_log = np.log10(total_raw) if pd.notna(total_raw) and total_raw > 0 else np.nan
+                dominant = table_df.iloc[0]["Ingredient"] if not table_df.empty else "NA"
+                dominant_raw = float(table_df.iloc[0]["Raw"]) if not table_df.empty else np.nan
+                card_body = html.Div([
+                    html.H4(f"Selected feature: {selected_feature}", style={"margin": "0 0 8px 0"}),
+                    html.Div(f"Total ingredient intensity (sum): {total_raw:,.0f}" if pd.notna(total_raw) else "Total ingredient intensity (sum): NA"),
+                    html.Div(f"log10(total ingredient intensity): {total_log:.6f}" if pd.notna(total_log) else "log10(total ingredient intensity): NA"),
+                    html.Div(f"Dominant ingredient: {dominant}"),
+                    html.Div(f"Dominant raw intensity: {dominant_raw:,.0f}" if pd.notna(dominant_raw) else "Dominant raw intensity: NA"),
+                    html.Div(f"Name: {r.get('name', 'NA')}"),
+                    html.Div(f"Molecular Formula: {r.get('molecularFormula', 'NA')}"),
+                    html.Div(["PubChem IDs: ", *render_pubchem_links(r.get("pubchemids", None))]),
+                    html.Div(f"NPC Pathway: {r.get('NPC.pathway', 'NA')}"),
+                ])
+                card_style = {"display": "block", "marginTop": "6px"}
+        return q6_dom_fig, contrib_fig, table_df.to_dict("records"), cols, stats, card_body, card_style
 
     # ---- Q7: Enrichment vs component sources (Final − sum(components)) ----
+    # ---- Q7: Enrichment vs component sources (read DIRECTLY from Excel) ----
+    HEPAR_COLS = [
+        "Avena.sativa",
+        "Chelidonium.majus",
+        "Cinchona.pubescens",
+        "Cynara.scolymus",
+        "Lycopodium.clavatum",
+        "Silybum.marianum.",
+        "Taraxacum.officinale",
+        "Veratrum.album",
+        "Colon.Suis.D4",
+        "Duodenum.Suis.D4",
+        "Hepar.Suis.D4",
+        "Pankreas.Suis.D4",
+        "Thymus.Suis.D4",
+        "Vesica.Fellea.Suis.D4",
+    ]
+
+    HEPEEL_COLS = [
+        "Chelidonium.majus",
+        "Cinchona.pubescens",
+        "Citrullus.colocynthis.",
+        "Lycopodium.clavatum",
+        "Myristica.fragrans.",
+        "Silybum.marianum.",
+        "Veratrum.album",
+    ]
+
+    HEPAR_TARGET_COL = "Hepar.comp.Ampoules..Bulk.mat.52324."
+    HEPEEL_BULK_COL = "Hepeel.ampoule.solution..Bulk"
+
+    def _load_q7_excel_df() -> pd.DataFrame:
+        """
+        Read Excel directly for Q7.
+        The workbook has a title row first, so the real header is row 2.
+        """
+        excel_path = Path(__file__).resolve().parent / "data" / "Product_features_summary_annotation.xlsx"
+
+        # IMPORTANT: real header is the second row
+        df = pd.read_excel(excel_path, header=1)
+
+        df["feature"] = df["feature"].astype(str).str.strip()
+
+        needed_cols = HEPAR_COLS + HEPEEL_COLS + [HEPAR_TARGET_COL, HEPEEL_BULK_COL]
+        missing = [c for c in needed_cols if c not in df.columns]
+        if missing:
+            raise KeyError(f"Q7: Missing required Excel columns: {missing}")
+
+        for c in needed_cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
+        # ingredient sums
+        df["hepar_ingredient_sum"] = df[HEPAR_COLS].sum(axis=1)
+        df["hepeel_ingredient_sum"] = df[HEPEEL_COLS].sum(axis=1)
+
+        # final product values
+        df["hepar_final_product"] = df[HEPAR_TARGET_COL]
+        df["hepeel_final_product"] = df[HEPEEL_BULK_COL]
+
+        # enrichment deltas
+        df["hepar_enrichment_delta"] = df["hepar_final_product"] - df["hepar_ingredient_sum"]
+        df["hepeel_enrichment_delta"] = df["hepeel_final_product"] - df["hepeel_ingredient_sum"]
+
+        # enrichment flags
+        df["hepar_enriched"] = df["hepar_enrichment_delta"] > 0
+        df["hepeel_enriched"] = df["hepeel_enrichment_delta"] > 0
+
+        return df
+
+    @app.callback(
+        Output("q7_selected_feature", "data"),
+        Output("q7_card_open", "data"),
+        Input("q7_graph", "clickData"),
+        Input("q7_close_card", "n_clicks"),
+        State("q7_selected_feature", "data"),
+        State("q7_card_open", "data"),
+        prevent_initial_call=True,
+    )
+    def update_q7_selection(q7_clickData, q7_close_clicks, current_selected, current_open):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else None
+        if trigger == "q7_close_card":
+            return no_update, False
+        if trigger == "q7_graph" and q7_clickData and q7_clickData.get("points"):
+            return str(q7_clickData["points"][0].get("x")), True
+        return current_selected, current_open
+
     @app.callback(
         Output("q7_graph", "figure"),
         Output("q7_table", "data"),
         Output("q7_table", "columns"),
-        Output("q7_pubchem", "children"),
         Output("q7_stats", "children"),
+        Output("q7_card_body", "children"),
+        Output("q7_feature_card", "style"),
         Input("product", "value"),
         Input("feature_search", "value"),
         Input("only_pubchem", "value"),
         Input("global_intensity_log_range", "value"),
         Input("q7_top_n", "value"),
-        Input("q7_graph", "clickData"),
+        Input("q7_selected_feature", "data"),
+        Input("q7_card_open", "data"),
     )
-    def update_q7(product, feature_search, only_pubchem_vals, global_intensity_log_range, q7_top_n, q7_clickData):
-        sdf = summary_df.copy()
-        sdf["feature"] = sdf["feature"].astype(str)
-
-        # Resolve final product column for selected product
+    def update_q7(product, feature_search, only_pubchem_vals, global_intensity_log_range, q7_top_n, q7_selected_feature, q7_card_open):
         try:
-            final_col = _find_col(sdf, HEPAR_FINAL_COL) if "hepar" in str(product).lower() else _find_col(sdf, HEPEEL_FINAL_COL)
-            final_col = _find_col(sdf, HEPAR_FINAL_COL) if "hepar" in str(product).lower() else _find_col(sdf, HEPEEL_FINAL_COL)
-        except KeyError as e:
-            fig = px.bar(title=f"Q7: Missing final product column ({e})")
-            return fig, [], [], "Q7: Missing final product column.", ""
+            dff = _load_q7_excel_df()
+        except Exception as e:
+            fig = px.bar(
+                pd.DataFrame({"feature": [], "enrichment_delta": []}),
+                x="feature",
+                y="enrichment_delta",
+                template="plotly",
+                title=f"Q7: error loading Excel ({e})",
+            )
+            return fig, [], [], f"Q7 error: {e}", html.Div("No feature selected."), {"display": "none"}
 
-        # Ingredient columns for selected product (authoritative from data_loader groups)
-        if "hepar" in str(product).lower():
-            base_cols = list(groups.get("hepar_component_cols", []))
-        else:
-            base_cols = list(groups.get("hepeel_component_cols", []))
+        # optional filters
+        if feature_search and str(feature_search).strip():
+            s = str(feature_search).strip()
+            dff = dff[dff["feature"].str.contains(s, case=False, na=False)].copy()
 
-        # keep only those that exist in the dataframe
-        ingredient_cols = [c for c in base_cols if c in sdf.columns]
-        missing = [c for c in base_cols if c not in sdf.columns]
+        if "only" in (only_pubchem_vals or []):
+            if "pubchemids" in dff.columns:
+                dff = dff[dff["pubchemids"].apply(has_pubchem)].copy()
+            else:
+                dff = dff.iloc[0:0].copy()
 
-        if not ingredient_cols:
-            fig = px.bar(title="Q7: No ingredient columns available for this product")
-            return fig, [], [], "Q7: No ingredient columns available for this product.", ""
-
-        # Numeric conversion
-        sdf[final_col] = pd.to_numeric(sdf[final_col], errors="coerce").fillna(0)
-        for c in ingredient_cols:
-            if c in sdf.columns:
-                sdf[c] = pd.to_numeric(sdf[c], errors="coerce").fillna(0)
-
-        # Restrict to features in selected product feature list
-        prod_df = data[product].features.copy()
-        prod_df["feature"] = prod_df["feature"].astype(str)
-        prod_ids = set(prod_df["feature"].dropna().astype(str))
-        sdf = sdf[sdf["feature"].isin(prod_ids)].copy()
-
-        # Global intensity filter based on product feature intensity
-        if global_intensity_log_range and "intensity" in prod_df.columns:
+        # apply global slider to BOTH product finals so the page stays consistent
+        if global_intensity_log_range:
             log_lo, log_hi = map(float, global_intensity_log_range)
             lo = 10 ** log_lo
             hi = 10 ** log_hi
-            keep_ids = set(prod_df.loc[prod_df["intensity"].between(lo, hi, inclusive="both"), "feature"].astype(str))
-            sdf = sdf[sdf["feature"].isin(keep_ids)].copy()
+            dff = dff[
+                dff["hepar_final_product"].between(lo, hi, inclusive="both")
+                | dff["hepeel_final_product"].between(lo, hi, inclusive="both")
+            ].copy()
 
-        # Feature search
-        if feature_search and str(feature_search).strip():
-            s = str(feature_search).strip()
-            sdf = sdf[sdf["feature"].str.contains(s, case=False, na=False)].copy()
+        top_n = int(q7_top_n) if q7_top_n else 50
 
-        # Only PubChem filter
-        if "only" in (only_pubchem_vals or []):
-            if "pubchemids" in sdf.columns:
-                sdf = sdf[sdf["pubchemids"].apply(has_pubchem)].copy()
+        # build Hepar enriched rows
+        hepar_df = dff[dff["hepar_enriched"]].copy()
+        hepar_df["ingredient_sum"] = hepar_df["hepar_ingredient_sum"]
+        hepar_df["final_product"] = hepar_df["hepar_final_product"]
+        hepar_df["enrichment_delta"] = hepar_df["hepar_enrichment_delta"]
+        hepar_df["enriched_in"] = "Hepar"
+
+        # build Hepeel enriched rows
+        hepeel_df = dff[dff["hepeel_enriched"]].copy()
+        hepeel_df["ingredient_sum"] = hepeel_df["hepeel_ingredient_sum"]
+        hepeel_df["final_product"] = hepeel_df["hepeel_final_product"]
+        hepeel_df["enrichment_delta"] = hepeel_df["hepeel_enrichment_delta"]
+        hepeel_df["enriched_in"] = "Hepeel"
+
+        # combine both
+        enriched_df = pd.concat([hepar_df, hepeel_df], ignore_index=True)
+
+        # optional: if dropdown is selected, sort with selected product first
+        if "hepar" in str(product).lower():
+            enriched_df["product_priority"] = (enriched_df["enriched_in"] != "Hepar").astype(int)
+        else:
+            enriched_df["product_priority"] = (enriched_df["enriched_in"] != "Hepeel").astype(int)
+
+        enriched_df = enriched_df.sort_values(
+            ["product_priority", "enrichment_delta"],
+            ascending=[True, False]
+        ).copy()
+
+        plot_df = enriched_df.head(top_n).copy()
+
+        if plot_df.empty:
+            fig = px.bar(
+                pd.DataFrame({"feature": [], "enrichment_delta": [], "enriched_in": []}),
+                x="feature",
+                y="enrichment_delta",
+                color="enriched_in",
+                template="plotly",
+                title="Q7: Hepar + Hepeel enriched features",
+            )
+        else:
+            hover_cols = [
+                c for c in [
+                    "ingredient_sum",
+                    "final_product",
+                    "hepar_ingredient_sum",
+                    "hepar_final_product",
+                    "hepar_enrichment_delta",
+                    "hepeel_ingredient_sum",
+                    "hepeel_final_product",
+                    "hepeel_enrichment_delta",
+                    "name",
+                    "molecularFormula",
+                    "pubchemids",
+                    "NPC.pathway",
+                ] if c in plot_df.columns
+            ]
+
+            if plot_df.empty:
+                fig = px.bar(
+                    pd.DataFrame({"feature": [], "enrichment_delta": [], "enriched_in": []}),
+                    x="feature",
+                    y="enrichment_delta",
+                    color="enriched_in",
+                    template="plotly",
+                    title="Q7: Hepar + Hepeel enriched features",
+                )
             else:
-                sdf = sdf.iloc[0:0].copy()
+                hover_cols = [
+                    c for c in [
+                        "ingredient_sum",
+                        "final_product",
+                        "hepar_ingredient_sum",
+                        "hepar_final_product",
+                        "hepar_enrichment_delta",
+                        "hepeel_ingredient_sum",
+                        "hepeel_final_product",
+                        "hepeel_enrichment_delta",
+                        "name",
+                        "molecularFormula",
+                        "pubchemids",
+                        "NPC.pathway",
+                    ] if c in plot_df.columns
+                ]
 
-        # Enrichment = Final - sum(ingredients)
-        mat_ing = sdf[ingredient_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-        ing_sum = mat_ing.sum(axis=1)
-        sdf["q7_ingredient_sum"] = ing_sum
-        sdf["q7_enrichment"] = sdf[final_col] - ing_sum
+                fig = px.bar(
+                    plot_df,
+                    x="feature",
+                    y="enrichment_delta",
+                    color="enriched_in",
+                    barmode="group",
+                    hover_data=hover_cols,
+                    template="plotly",
+                    title="Q7: Enriched features in Hepar and Hepeel (read directly from Excel)",
+                    log_y=True,
+                )
 
-        # Keep enriched > 0
-        sdf = sdf[sdf["q7_enrichment"] > 0].copy()
+                fig.update_layout(
+                    xaxis_title="feature",
+                    yaxis_title="final product - sum(ingredients) [log scale]",
+                    margin=dict(l=20, r=20, t=50, b=140),
+                    legend_title_text="",
+                )
 
-        top_n = int(q7_top_n) if q7_top_n else 300
-        sdf = sdf.sort_values("q7_enrichment", ascending=False).head(top_n)
+                fig.update_xaxes(tickangle=-35)
 
-        # Plot (log_y like enrichment scripts)
-        fig = px.bar(
-            sdf,
-            x="feature",
-            y="q7_enrichment",
-            title="Enriched features (Final − sum(ingredients))",
-            template="plotly",
-            log_y=True,
-        )
-        fig.update_layout(xaxis=dict(showticklabels=True, tickangle=45), yaxis_title="enrichment (log scale)")
+        selected_feature = str(q7_selected_feature).strip() if q7_selected_feature else None
+        if selected_feature:
+            for tr in fig.data:
+                xs = [str(x) for x in tr.x] if tr.x is not None else []
+                line_widths = [2 if x == selected_feature else 0 for x in xs]
+                opacities = [1.0 if x == selected_feature else 0.45 for x in xs]
+                tr.marker.line = {"color": "black", "width": line_widths}
+                tr.marker.opacity = opacities
 
-        # PubChem output on click
-        pubchem_out = "Click a feature bar to see PubChem ID(s)"
-        if q7_clickData and "points" in q7_clickData and q7_clickData["points"]:
-            f_clicked = str(q7_clickData["points"][0].get("x"))
-            row = sdf[sdf["feature"] == f_clicked]
-            if not row.empty:
-                pubchem_ids = row["pubchemids"].iloc[0] if "pubchemids" in row.columns else None
-                cids = extract_pubchem_cids(pubchem_ids)
-                if not cids:
-                    pubchem_out = f"Feature {f_clicked} | PubChem ID(s): Not available"
-                else:
-                    pubchem_out = html.Div([
-                        html.B(f"Feature: {f_clicked} | PubChem CID(s): "),
-                        html.Span([
-                            html.A(
-                                cid,
-                                href=f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}",
-                                target="_blank",
-                                style={"marginRight": "10px"},
-                            )
-                            for cid in cids
-                        ])
-                    ])
 
-        # Table
-        out_cols = ["feature", "q7_enrichment", final_col, "q7_ingredient_sum"]
+        out_cols = [
+            "feature",
+            "enriched_in",
+            "ingredient_sum",
+            "final_product",
+            "enrichment_delta",
+            "hepar_ingredient_sum",
+            "hepar_final_product",
+            "hepar_enrichment_delta",
+            "hepeel_ingredient_sum",
+            "hepeel_final_product",
+            "hepeel_enrichment_delta",
+        ]
         for c in ["name", "molecularFormula", "pubchemids", "NPC.pathway"]:
-            if c in sdf.columns:
+            if c in enriched_df.columns:
                 out_cols.append(c)
 
-        out_df = sdf[out_cols].copy()
-        columns = [{"name": c, "id": c} for c in out_df.columns]
-        miss_txt = f" | missing cols: {len(missing)}" if 'missing' in locals() and missing else ""
-        stats = f"Q7 | enriched rows: {len(out_df):,} | top_n={top_n}{miss_txt}"
-        return fig, out_df.to_dict("records"), columns, pubchem_out, stats
+        out_df = enriched_df[out_cols].copy()
+        cols = [{"name": c, "id": c} for c in out_df.columns]
+
+        hepar_count = int((enriched_df["enriched_in"] == "Hepar").sum())
+        hepeel_count = int((enriched_df["enriched_in"] == "Hepeel").sum())
+
+        stats = (
+            f"Q7 | Hepar enriched: {hepar_count:,} | "
+            f"Hepeel enriched: {hepeel_count:,} | "
+            f"total rows: {len(enriched_df):,} | source: Excel"
+        )
+        def _fmt_int(x):
+            try:
+                if x is None or (isinstance(x, float) and pd.isna(x)):
+                    return "NA"
+                return f"{float(x):,.0f}"
+            except Exception:
+                return "NA"
+
+        card_body = html.Div("Grafikte bir feature secerek detaylarini gorebilirsiniz.")
+        card_style = {"display": "none"}
+        if selected_feature and bool(q7_card_open):
+            rows = out_df[out_df["feature"].astype(str) == selected_feature]
+            if not rows.empty:
+                hepar_row = rows[rows["enriched_in"] == "Hepar"]
+                hepeel_row = rows[rows["enriched_in"] == "Hepeel"]
+                base_row = dff[dff["feature"].astype(str) == selected_feature]
+                rr = base_row.iloc[0] if not base_row.empty else None
+                category = []
+                if not hepar_row.empty:
+                    category.append("Hepar")
+                if not hepeel_row.empty:
+                    category.append("Hepeel")
+                if not category:
+                    category.append("Not enriched")
+                card_body = html.Div([
+                    html.H4(f"Selected feature: {selected_feature}", style={"margin": "0 0 8px 0"}),
+                    html.Div(f"Category: {', '.join(category)}"),
+                    html.Div(
+                        f"Hepar ratio: {_fmt_int(rr.get('hepar_final_product', np.nan))} / {_fmt_int(rr.get('hepar_ingredient_sum', np.nan))} | "
+                        f"delta: {_fmt_int(rr.get('hepar_enrichment_delta', np.nan))}"
+                    ) if rr is not None else html.Div("Hepar ratio: NA"),
+                    html.Div(
+                        f"Hepeel ratio: {_fmt_int(rr.get('hepeel_final_product', np.nan))} / {_fmt_int(rr.get('hepeel_ingredient_sum', np.nan))} | "
+                        f"delta: {_fmt_int(rr.get('hepeel_enrichment_delta', np.nan))}"
+                    ) if rr is not None else html.Div("Hepeel ratio: NA"),
+                    html.Div(f"Hepar final: {_fmt_int(rr.get('hepar_final_product', np.nan))} | sum(comp): {_fmt_int(rr.get('hepar_ingredient_sum', np.nan))}") if rr is not None else html.Div("Hepar final: NA"),
+                    html.Div(f"Hepeel final: {_fmt_int(rr.get('hepeel_final_product', np.nan))} | sum(comp): {_fmt_int(rr.get('hepeel_ingredient_sum', np.nan))}") if rr is not None else html.Div("Hepeel final: NA"),
+                    html.Div(f"Name: {rr.get('name', 'NA') if rr is not None else 'NA'}"),
+                    html.Div(f"Formula: {rr.get('molecularFormula', 'NA') if rr is not None else 'NA'}"),
+                    html.Div(["PubChem: ", *render_pubchem_links(rr.get("pubchemids", None) if rr is not None else None)]),
+                ])
+                card_style = {"display": "block", "marginTop": "6px"}
+
+        return fig, out_df.to_dict("records"), cols, stats, card_body, card_style
+    # ---- Q8: click / card state ----
+    @app.callback(
+        Output("q8_selected_feature", "data"),
+        Output("q8_card_open", "data"),
+        Input("q8_graph", "clickData"),
+        Input("q8_close_card", "n_clicks"),
+        State("q8_selected_feature", "data"),
+        State("q8_card_open", "data"),
+        prevent_initial_call=True,
+    )
+    def update_q8_selection(q8_clickData, q8_close_clicks, current_selected, current_open):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else None
+        if trigger == "q8_close_card":
+            return no_update, False
+        if trigger == "q8_graph" and q8_clickData and q8_clickData.get("points"):
+            return str(q8_clickData["points"][0].get("x")), True
+        return current_selected, current_open
+
     # ---- Q8: Selective amplification/attenuation (Final / max(component)) ----
     @app.callback(
         Output("q8_table", "data"),
         Output("q8_table", "columns"),
         Output("q8_table", "tooltip_data"),
-        Output("q8_hist", "figure"),
+        Output("q8_graph", "figure"),
         Output("q8_stats", "children"),
+        Output("q8_card_body", "children"),
+        Output("q8_feature_card", "style"),
         Input("product", "value"),
         Input("feature_search", "value"),
         Input("only_pubchem", "value"),
         Input("global_intensity_log_range", "value"),
         Input("q8_amp_threshold", "value"),
         Input("q8_cats", "value"),
+        Input("q8_selected_feature", "data"),
+        Input("q8_card_open", "data"),
     )
-    def update_q8(product, feature_search, only_pubchem_vals, global_intensity_log_range, q8_amp_threshold, q8_cats):
-        empty_fig = px.histogram(pd.DataFrame({"ratio": []}), x="ratio", template="plotly")
-        empty_fig.update_layout(
-            xaxis_title="Final product / max ingredient (ratio)",
-            yaxis_title="Feature count",
-            margin=dict(l=20, r=20, t=30, b=40),
-            showlegend=True,
-        )
+    def update_q8(
+        product,
+        feature_search,
+        only_pubchem_vals,
+        global_intensity_log_range,
+        q8_amp_threshold,
+        q8_cats,
+        q8_selected_feature,
+        q8_card_open,
+    ):
+        empty_fig = _q8_empty_figure("Q8: no data or empty filter result")
 
         sdf = summary_df.copy()
         sdf["feature"] = sdf["feature"].astype(str)
 
-        # Resolve required columns (best-effort matching)
         try:
-            hepar_final = _find_col(sdf, HEPAR_FINAL_COL)
-            hepeel_final = _find_col(sdf, HEPEEL_FINAL_COL)
-            hepar_final = _find_col(sdf, HEPAR_FINAL_COL)
-            hepeel_final = _find_col(sdf, HEPEEL_FINAL_COL)
+            hepar_final = _find_col(sdf, Q8_HEPAR_FINAL_COL)
+            hepeel_final = _find_col(sdf, Q8_HEPEEL_FINAL_COL)
         except KeyError as e:
-            return [], [], [], empty_fig, f"Q8: Missing final product columns. {e}"
+            card = html.Div(f"Q8: missing columns. {e}")
+            return [], [], [], empty_fig, str(e), card, {"display": "none"}
 
         hepar_ing_cols = [c for c in groups.get("hepar_component_cols", []) if c in sdf.columns]
         hepeel_ing_cols = [c for c in groups.get("hepeel_component_cols", []) if c in sdf.columns]
 
         if not hepar_ing_cols or not hepeel_ing_cols:
-            msg = f"Q8: Missing component columns. Hepar cols={len(hepar_ing_cols)}, Hepeel cols={len(hepeel_ing_cols)}."
-            return [], [], [], empty_fig, msg
+            msg = f"Q8: missing component columns. Hepar={len(hepar_ing_cols)}, Hepeel={len(hepeel_ing_cols)}."
+            return [], [], [], empty_fig, msg, html.Div(msg), {"display": "none"}
 
-        # Numeric conversion for needed columns
         need_cols = [hepar_final, hepeel_final] + hepar_ing_cols + hepeel_ing_cols
         for c in need_cols:
             if c in sdf.columns:
                 sdf[c] = pd.to_numeric(sdf[c], errors="coerce").fillna(0)
 
-        # Decide which product is selected in the top dropdown
         pnorm = str(product).lower()
         is_hepar = "hepar" in pnorm
         sel_final = hepar_final if is_hepar else hepeel_final
@@ -854,33 +1424,27 @@ def build_app() -> Dash:
         sel_state_col = "hepar_state" if is_hepar else "hepeel_state"
         other_state_col = "hepeel_state" if is_hepar else "hepar_state"
 
-        # Global intensity filter should behave like the rest of the app:
-        # apply it to the SELECTED product final intensity only
         if global_intensity_log_range:
             log_lo, log_hi = map(float, global_intensity_log_range)
             lo = 10 ** log_lo
             hi = 10 ** log_hi
             sdf = sdf[sdf[sel_final].between(lo, hi, inclusive="both")].copy()
 
-        # Feature search
         if feature_search and str(feature_search).strip():
             s = str(feature_search).strip()
             sdf = sdf[sdf["feature"].astype(str).str.contains(s, case=False, na=False)].copy()
 
-        # Only PubChem filter
         if "only" in (only_pubchem_vals or []):
             if "pubchemids" in sdf.columns:
                 sdf = sdf[sdf["pubchemids"].apply(has_pubchem)].copy()
             else:
                 sdf = sdf.iloc[0:0].copy()
 
-        amp_thr = float(q8_amp_threshold) if q8_amp_threshold else 3.0
+        amp_thr = float(q8_amp_threshold) if q8_amp_threshold else 1.0
         amp_thr = max(1.0, amp_thr)
 
         hepar_comp_max = sdf[hepar_ing_cols].max(axis=1)
         hepeel_comp_max = sdf[hepeel_ing_cols].max(axis=1)
-
-        # Store max values in the dataframe for tooltip use
         sdf["hepar_comp_max"] = hepar_comp_max
         sdf["hepeel_comp_max"] = hepeel_comp_max
 
@@ -890,7 +1454,6 @@ def build_app() -> Dash:
         sdf["hepar_state"] = [_q8_state(float(p), float(m), amp_thr) for p, m in zip(sdf[hepar_final], hepar_comp_max)]
         sdf["hepeel_state"] = [_q8_state(float(p), float(m), amp_thr) for p, m in zip(sdf[hepeel_final], hepeel_comp_max)]
 
-        # Build selective categories (still computed using BOTH products)
         def cat(row) -> list[str]:
             out: list[str] = []
             hs = row["hepar_state"]
@@ -908,7 +1471,6 @@ def build_app() -> Dash:
         sdf["q8_category"] = sdf.apply(cat, axis=1)
         sdf = sdf.explode("q8_category").dropna(subset=["q8_category"])
 
-        # Map the TWO checkboxes to the right categories depending on selected product
         amp_cat = "hepar_selective_amplification" if is_hepar else "hepeel_selective_amplification"
         att_cat = "hepar_selective_attenuation" if is_hepar else "hepeel_selective_attenuation"
 
@@ -921,49 +1483,181 @@ def build_app() -> Dash:
 
         sdf = sdf[sdf["q8_category"].isin(allowed)].copy() if allowed else sdf.iloc[0:0].copy()
 
-        # Add a friendly type label for display
         sdf["q8_type"] = sdf["q8_category"].map({
             amp_cat: "Selective amplification",
             att_cat: "Selective attenuation",
         })
 
-        # Histogram on selected product ratio
+        prod_label = "Hepar" if is_hepar else "Hepeel"
+        max_bars = 2000
+
+        selected_feature = str(q8_selected_feature).strip() if q8_selected_feature else None
+
+        show_amp = "selective_amplification" in desired and amp_cat in allowed
+        show_att = "selective_attenuation" in desired and att_cat in allowed
+
+        amp_df = sdf[sdf["q8_type"] == "Selective amplification"].copy() if show_amp else pd.DataFrame()
+        att_df = sdf[sdf["q8_type"] == "Selective attenuation"].copy() if show_att else pd.DataFrame()
+
+        if not sdf.empty:
+            if not amp_df.empty:
+                amp_df = amp_df.sort_values(sel_ratio_col, ascending=False).head(max_bars)
+            if not att_df.empty:
+                att_df = att_df.sort_values(sel_ratio_col, ascending=True).head(max_bars)
+
         if sdf.empty:
-            fig = empty_fig
-        else:
-            fig = px.histogram(
-                sdf,
-                x=sel_ratio_col,
-                color="q8_type",
-                nbins=40,
-                template="plotly",
+            fig = _q8_empty_figure("Empty filter result — relax threshold or intensity range.")
+            return [], [], [], fig, f"Q8 ({prod_label}) | 0 feature", html.Div("No rows in table."), {"display": "none"}
+
+        amp_color = "#27ae60"
+        att_color = "#e67e22"
+
+        def _add_empty_panel_message(fig_obj: go.Figure, row: int, message: str):
+            # Draw an explicit empty-state card inside the subplot region.
+            if row == 1:
+                y0, y1, y_text = 0.58, 0.92, 0.75
+            else:
+                y0, y1, y_text = 0.08, 0.42, 0.25
+
+            fig_obj.add_shape(
+                type="rect",
+                xref="paper",
+                yref="paper",
+                x0=0.05,
+                x1=0.95,
+                y0=y0,
+                y1=y1,
+                line={"color": "#cbd5e1", "width": 1, "dash": "dot"},
+                fillcolor="rgba(241,245,249,0.7)",
             )
-            fig.update_layout(
-                xaxis_title="Final product / max ingredient (ratio)",
-                yaxis_title="Feature count",
-                margin=dict(l=20, r=20, t=30, b=40),
-                legend_title_text="",
+            fig_obj.add_annotation(
+                x=0.5,
+                y=y_text,
+                xref="paper",
+                yref="paper",
+                text=message,
+                showarrow=False,
+                font={"size": 13, "color": "#475569"},
+                align="center",
             )
 
-        # Output table (show selected product columns + other product state for context)
+        def make_q8_bar_trace(df: pd.DataFrame, color: str) -> go.Bar:
+            xs = df["feature"].astype(str).tolist()
+            ys = _q8_log10_ratio_series(df[sel_ratio_col])
+            line_w = [2.5 if selected_feature and str(x) == selected_feature else 0 for x in xs]
+            opac = [1.0 if (selected_feature and str(x) == selected_feature) else 0.55 for x in xs]
+            cd = np.column_stack(
+                [
+                    df["q8_type"].astype(str).to_numpy(),
+                    pd.to_numeric(df[sel_ratio_col], errors="coerce").to_numpy(),
+                ]
+            )
+            return go.Bar(
+                x=xs,
+                y=ys,
+                marker_color=color,
+                marker_line_color="black",
+                marker_line_width=line_w,
+                marker_opacity=opac,
+                customdata=cd,
+                hovertemplate=(
+                    "<b>%{x}</b><br>"
+                    + f"{prod_label} ratio=%{{customdata[1]:.4g}}<br>"
+                    + "log10(ratio)=%{y:.3f}<br>"
+                    + "q8_type=%{customdata[0]}<extra></extra>"
+                ),
+                showlegend=False,
+            )
+
+        if show_amp and show_att:
+            fig = make_subplots(
+                rows=2,
+                cols=1,
+                vertical_spacing=0.1,
+                subplot_titles=(
+                    f"Selective amplification — {prod_label} (selected product amplified, other not)",
+                    f"Selective attenuation — {prod_label} (selected product attenuated, other not)",
+                ),
+            )
+            if not amp_df.empty:
+                fig.add_trace(make_q8_bar_trace(amp_df, amp_color), row=1, col=1)
+            else:
+                _add_empty_panel_message(
+                    fig,
+                    row=1,
+                    message=f"No selective amplification features found for {prod_label} under the current filters.",
+                )
+            if not att_df.empty:
+                fig.add_trace(make_q8_bar_trace(att_df, att_color), row=2, col=1)
+            else:
+                _add_empty_panel_message(
+                    fig,
+                    row=2,
+                    message=f"No selective attenuation features found for {prod_label} under the current filters.",
+                )
+            fig.update_xaxes(title_text="feature (each bar = one feature)", showticklabels=False, row=1, col=1)
+            fig.update_xaxes(title_text="feature (each bar = one feature)", showticklabels=False, row=2, col=1)
+            fig.update_yaxes(title_text="log10(Final / max component)", row=1, col=1)
+            fig.update_yaxes(title_text="log10(Final / max component)", row=2, col=1)
+            fig.update_layout(
+                template="plotly",
+                height=720,
+                margin=dict(l=50, r=20, t=90, b=40),
+                title_text=f"Q8 ({prod_label}): which features show selective amp / att?",
+            )
+        elif show_amp:
+            fig = go.Figure(data=[make_q8_bar_trace(amp_df, amp_color)]) if not amp_df.empty else _q8_empty_figure(
+                f"No selective amplification features found for {prod_label} under the current filters."
+            )
+            fig.update_layout(
+                template="plotly",
+                height=460,
+                title_text=f"Q8 ({prod_label}): selective amplification (by feature)",
+                xaxis=dict(title="feature (each bar = one feature)", showticklabels=False),
+                yaxis=dict(title="log10(Final / max component)"),
+                margin=dict(l=50, r=20, t=70, b=40),
+            )
+        elif show_att:
+            fig = go.Figure(data=[make_q8_bar_trace(att_df, att_color)]) if not att_df.empty else _q8_empty_figure(
+                f"No selective attenuation features found for {prod_label} under the current filters."
+            )
+            fig.update_layout(
+                template="plotly",
+                height=460,
+                title_text=f"Q8 ({prod_label}): selective attenuation (by feature)",
+                xaxis=dict(title="feature (each bar = one feature)", showticklabels=False),
+                yaxis=dict(title="log10(Final / max component)"),
+                margin=dict(l=50, r=20, t=70, b=40),
+            )
+        else:
+            fig = _q8_empty_figure("No features to show for the selected categories (or filter result is empty).")
+
         out_cols = [
             "feature",
             "q8_type",
             "hepar_comp_max",
             "hepeel_comp_max",
-            sel_final,
-            sel_ratio_col,
+            hepar_final,
+            hepeel_final,
+            "hepar_ratio",
+            "hepeel_ratio",
+            "hepar_state",
+            "hepeel_state",
             sel_state_col,
             other_state_col,
         ]
+        _seen: list[str] = []
+        for c in out_cols:
+            if c in sdf.columns and c not in _seen:
+                _seen.append(c)
+        out_cols = _seen
         for c in ["name", "molecularFormula", "pubchemids", "NPC.pathway"]:
-            if c in sdf.columns:
+            if c in sdf.columns and c not in out_cols:
                 out_cols.append(c)
 
         out = sdf[out_cols].copy()
-        out = out.sort_values([ "q8_type", sel_ratio_col ], ascending=[True, False]).head(2000)
+        out = out.sort_values(["q8_type", sel_ratio_col], ascending=[True, False]).head(2000)
 
-        # Tooltip helpers and builder
         def _fmt_int(x):
             try:
                 if x is None or (isinstance(x, float) and pd.isna(x)):
@@ -982,7 +1676,6 @@ def build_app() -> Dash:
 
         inv_thr = 1.0 / amp_thr if amp_thr else float("nan")
 
-        # Build per-row tooltips for the ratio cells
         tooltips = []
         for _, r in out.iterrows():
             hf = r.get(hepar_final, float("nan"))
@@ -998,17 +1691,17 @@ def build_app() -> Dash:
             hepar_tip = (
                 f"**ratio = Final / max(ingredients)**\n"
                 f"= {_fmt_int(hf)} / {_fmt_int(hm)} = **{_fmt_ratio(hr)}**\n\n"
-                f"Amplified if ratio ≥ **{amp_thr:.2f}**\n"
-                f"Attenuated if ratio ≤ **{inv_thr:.2f}**\n"
-                f"→ **{hs}**"
+                f"Amplified if ratio >= **{amp_thr:.2f}**\n"
+                f"Attenuated if ratio <= **{inv_thr:.2f}**\n"
+                f"-> **{hs}**"
             )
 
             hepeel_tip = (
                 f"**ratio = Final / max(ingredients)**\n"
                 f"= {_fmt_int(pf)} / {_fmt_int(pm)} = **{_fmt_ratio(pr)}**\n\n"
-                f"Amplified if ratio ≥ **{amp_thr:.2f}**\n"
-                f"Attenuated if ratio ≤ **{inv_thr:.2f}**\n"
-                f"→ **{ps}**"
+                f"Amplified if ratio >= **{amp_thr:.2f}**\n"
+                f"Attenuated if ratio <= **{inv_thr:.2f}**\n"
+                f"-> **{ps}**"
             )
 
             tooltips.append(
@@ -1020,10 +1713,254 @@ def build_app() -> Dash:
 
         cols = [{"name": c, "id": c} for c in out.columns]
         stats = (
-            f"Q8 ({'Hepar' if is_hepar else 'Hepeel'}) | rows: {len(out):,} | "
-            f"amp≥{amp_thr:g}x (att≤{1/amp_thr:g}x)"
+            f"Q8 ({prod_label}) | table rows: {len(out):,} | chart: amp≤{max_bars}, att≤{max_bars} | "
+            f"threshold amp≥{amp_thr:g}x (att≤{1/amp_thr:g}x)"
         )
-        return out.to_dict("records"), cols, tooltips, fig, stats
+
+        card_body = html.Div("Click a bar in the chart to select a feature.")
+        card_style = {"display": "none"}
+        if selected_feature and q8_card_open:
+            one = sdf[sdf["feature"].astype(str) == selected_feature]
+            if not one.empty:
+                rr = one.iloc[0]
+                cats = ", ".join(one["q8_type"].dropna().astype(str).unique()) if "q8_type" in one.columns else "-"
+                card_body = html.Div([
+                    html.H4(f"Selected feature: {selected_feature}", style={"margin": "0 0 8px 0"}),
+                    html.Div(f"Category: {cats}"),
+                    html.Div(f"Hepar ratio: {_fmt_ratio(rr.get('hepar_ratio', np.nan))} | state: {rr.get('hepar_state', '-')}"),
+                    html.Div(f"Hepeel ratio: {_fmt_ratio(rr.get('hepeel_ratio', np.nan))} | state: {rr.get('hepeel_state', '-')}"),
+                    html.Div(f"Hepar final: {_fmt_int(rr.get(hepar_final, np.nan))} | max(comp): {_fmt_int(rr.get('hepar_comp_max', np.nan))}"),
+                    html.Div(f"Hepeel final: {_fmt_int(rr.get(hepeel_final, np.nan))} | max(comp): {_fmt_int(rr.get('hepeel_comp_max', np.nan))}"),
+                    html.Div(f"Name: {rr.get('name', '-')}"),
+                    html.Div(f"Formula: {rr.get('molecularFormula', '-')}"),
+                    html.Div(["PubChem: ", *render_pubchem_links(rr.get("pubchemids", None))]),
+                ])
+                card_style = {"display": "block", "marginTop": "6px"}
+
+        return out.to_dict("records"), cols, tooltips, fig, stats, card_body, card_style
+
+    # ---- Q9: interaction state (selected feature + closable card) ----
+    @app.callback(
+        Output("q9_selected_feature", "data"),
+        Output("q9_card_open", "data"),
+        Input("q9_graph", "clickData"),
+        Input("q9_close_card", "n_clicks"),
+        State("q9_selected_feature", "data"),
+        State("q9_card_open", "data"),
+        prevent_initial_call=True,
+    )
+    def update_q9_selection(q9_clickData, q9_close_clicks, current_selected, current_open):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else None
+
+        if trigger == "q9_close_card":
+            return no_update, False
+
+        if trigger == "q9_graph" and q9_clickData and "points" in q9_clickData and q9_clickData["points"]:
+            selected = str(q9_clickData["points"][0].get("x"))
+            return selected, True
+
+        return current_selected, current_open
+
+    # ---- Q9: Shared vs unique feature chemistry (Hepar vs Hepeel) ----
+    @app.callback(
+        Output("q9_graph", "figure"),
+        Output("q9_stats", "children"),
+        Output("q9_table", "data"),
+        Output("q9_table", "columns"),
+        Output("q9_card_body", "children"),
+        Output("q9_feature_card", "style"),
+        Input("feature_search", "value"),
+        Input("only_pubchem", "value"),
+        Input("global_intensity_log_range", "value"),
+        Input("q9_selected_feature", "data"),
+        Input("q9_card_open", "data"),
+    )
+    def update_q9(feature_search, only_pubchem_vals, global_intensity_log_range, q9_selected_feature, q9_card_open):
+        hepar_df = data["Hepar"].features.copy()
+        hepeel_df = data["Hepeel"].features.copy()
+        hepar_df["feature"] = hepar_df["feature"].astype(str)
+        hepeel_df["feature"] = hepeel_df["feature"].astype(str)
+
+        hepar_ids = set(hepar_df["feature"].dropna())
+        hepeel_ids = set(hepeel_df["feature"].dropna())
+
+        union_ids = hepar_ids | hepeel_ids
+        shared_ids = hepar_ids & hepeel_ids
+        unique_hepar = hepar_ids - hepeel_ids
+        unique_hepeel = hepeel_ids - hepar_ids
+
+        if "intensity" in hepar_df.columns:
+            hepar_df["intensity"] = pd.to_numeric(hepar_df["intensity"], errors="coerce").fillna(0)
+        else:
+            hepar_df["intensity"] = 0.0
+        if "intensity" in hepeel_df.columns:
+            hepeel_df["intensity"] = pd.to_numeric(hepeel_df["intensity"], errors="coerce").fillna(0)
+        else:
+            hepeel_df["intensity"] = 0.0
+
+        hepar_int_map = hepar_df.drop_duplicates("feature").set_index("feature")["intensity"].to_dict()
+        hepeel_int_map = hepeel_df.drop_duplicates("feature").set_index("feature")["intensity"].to_dict()
+
+        rows = []
+        for fid in sorted(union_ids):
+            if fid in shared_ids:
+                cls = "Shared (Hepar + Hepeel)"
+            elif fid in unique_hepar:
+                cls = "Unique to Hepar"
+            else:
+                cls = "Unique to Hepeel"
+
+            h_int = float(hepar_int_map.get(fid, 0.0) or 0.0)
+            p_int = float(hepeel_int_map.get(fid, 0.0) or 0.0)
+            max_int = max(h_int, p_int)
+            rows.append(
+                {
+                    "feature": str(fid),
+                    "q9_class": cls,
+                    "hepar_intensity": h_int,
+                    "hepeel_intensity": p_int,
+                    "q9_intensity": max_int,
+                    "q9_log_intensity": np.log10(max_int) if max_int > 0 else np.nan,
+                }
+            )
+
+        qdf = pd.DataFrame(rows)
+
+        annot_cols = [c for c in ["feature", "name", "molecularFormula", "pubchemids", "NPC.pathway"] if c in summary_df.columns]
+        if annot_cols and not qdf.empty:
+            annot = summary_df[annot_cols].drop_duplicates("feature").copy()
+            annot["feature"] = annot["feature"].astype(str)
+            qdf = qdf.merge(annot, on="feature", how="left")
+
+        if feature_search and str(feature_search).strip():
+            s = str(feature_search).strip()
+            qdf = qdf[qdf["feature"].str.contains(s, case=False, na=False)].copy()
+
+        if "only" in (only_pubchem_vals or []):
+            if "pubchemids" in qdf.columns:
+                qdf = qdf[qdf["pubchemids"].apply(has_pubchem)].copy()
+            else:
+                qdf = qdf.iloc[0:0].copy()
+
+        if global_intensity_log_range:
+            log_lo, log_hi = map(float, global_intensity_log_range)
+            lo = 10 ** log_lo
+            hi = 10 ** log_hi
+            qdf = qdf[qdf["q9_intensity"].between(lo, hi, inclusive="both")].copy()
+
+        qdf = qdf.sort_values("q9_intensity", ascending=False).head(5000)
+
+        color_map = {
+            "Shared (Hepar + Hepeel)": "#636EFA",
+            "Unique to Hepar": "#EF553B",
+            "Unique to Hepeel": "#00CC96",
+        }
+        fig = px.bar(
+            qdf,
+            x="feature",
+            y="q9_log_intensity",
+            color="q9_class",
+            color_discrete_map=color_map,
+            hover_data={c: False for c in qdf.columns if c not in {"feature", "q9_class"}},
+            title="Q9: Shared and unique features across Hepar vs Hepeel",
+            template="plotly",
+        )
+        fig.update_traces(
+            customdata=qdf[["q9_class"]].to_numpy() if not qdf.empty else None,
+            hovertemplate="q9_class=%{customdata[0]}<br>feature=%{x}<extra></extra>",
+        )
+
+        selected_feature = str(q9_selected_feature).strip() if q9_selected_feature else None
+        if selected_feature:
+            for tr in fig.data:
+                xs = [str(x) for x in tr.x] if tr.x is not None else []
+                line_widths = [2 if x == selected_feature else 0 for x in xs]
+                opacities = [1.0 if x == selected_feature else 0.45 for x in xs]
+                tr.marker.line = {"color": "black", "width": line_widths}
+                tr.marker.opacity = opacities
+
+        fig.update_layout(
+            xaxis=dict(showticklabels=False),
+            yaxis_title="log10(max final intensity across two products)",
+            legend_title_text="",
+            margin=dict(l=20, r=20, t=45, b=45),
+        )
+
+        table_cols = [
+            c for c in [
+                "feature", "q9_class", "hepar_intensity", "hepeel_intensity",
+                "q9_intensity", "q9_log_intensity", "name",
+                "molecularFormula", "pubchemids", "NPC.pathway",
+            ] if c in qdf.columns
+        ]
+        q9_table_df = qdf[table_cols].copy() if table_cols else qdf.copy()
+
+        card_body = html.Div("Click a bar to select a feature.")
+        card_style = {"display": "none"}
+        if selected_feature and bool(q9_card_open):
+            selected_row = q9_table_df[q9_table_df["feature"].astype(str) == selected_feature]
+            if not selected_row.empty:
+                r = selected_row.iloc[0]
+                q9_cls = str(r.get("q9_class", ""))
+                if q9_cls == "Shared (Hepar + Hepeel)":
+                    card_border = "#636EFA"
+                    card_bg = "rgba(99, 110, 250, 0.14)"
+                elif q9_cls == "Unique to Hepar":
+                    card_border = "#EF553B"
+                    card_bg = "rgba(239, 85, 59, 0.14)"
+                elif q9_cls == "Unique to Hepeel":
+                    card_border = "#00CC96"
+                    card_bg = "rgba(0, 204, 150, 0.14)"
+                else:
+                    card_border = "#ddd"
+                    card_bg = "rgba(249, 250, 251, 1)"
+                card_body = html.Div([
+                    html.H4(
+                        f"Selected feature: {selected_feature}",
+                        style={"margin": "0 0 8px 0", "color": card_border},
+                    ),
+                    html.Div(f"Class: {r.get('q9_class', 'NA')}", style={"fontWeight": "600", "color": card_border}),
+                    html.Div(f"Hepar intensity: {float(r.get('hepar_intensity', 0.0)):,.0f}"),
+                    html.Div(f"Hepeel intensity: {float(r.get('hepeel_intensity', 0.0)):,.0f}"),
+                    html.Div(f"Max intensity: {float(r.get('q9_intensity', 0.0)):,.0f}"),
+                    html.Div(f"log10(max intensity): {float(r.get('q9_log_intensity', np.nan)):.6f}" if pd.notna(r.get("q9_log_intensity", np.nan)) else "log10(max intensity): NA"),
+                    html.Div(f"Name: {r.get('name', 'NA')}"),
+                    html.Div(f"Molecular Formula: {r.get('molecularFormula', 'NA')}"),
+                    html.Div(["PubChem IDs: ", *render_pubchem_links(r.get("pubchemids", None))]),
+                    html.Div(f"NPC Pathway: {r.get('NPC.pathway', 'NA')}"),
+                ])
+                card_style = {
+                    "display": "block",
+                    "marginTop": "6px",
+                    "--q9-card-border": card_border,
+                    "--q9-card-bg": card_bg,
+                }
+
+        shared_n = int((qdf["q9_class"] == "Shared (Hepar + Hepeel)").sum()) if not qdf.empty else 0
+        hepar_n = int((qdf["q9_class"] == "Unique to Hepar").sum()) if not qdf.empty else 0
+        hepeel_n = int((qdf["q9_class"] == "Unique to Hepeel").sum()) if not qdf.empty else 0
+        stats = f"Q9 | shown: {len(qdf):,} | shared: {shared_n:,} | unique Hepar: {hepar_n:,} | unique Hepeel: {hepeel_n:,}"
+        cols = [{"name": c, "id": c} for c in q9_table_df.columns]
+        return fig, stats, q9_table_df.to_dict("records"), cols, card_body, card_style
+
+    # ---- Q10: interaction state (selected feature + closable card) ----
+    @app.callback(
+        Output("q10_selected_feature", "data"),
+        Output("q10_card_open", "data"),
+        Input("q10_graph", "clickData"),
+        Input("q10_close_card", "n_clicks"),
+        State("q10_selected_feature", "data"),
+        State("q10_card_open", "data"),
+        prevent_initial_call=True,
+    )
+    def update_q10_selection(q10_clickData, q10_close_clicks, current_selected, current_open):
+        trigger = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else None
+        if trigger == "q10_close_card":
+            return no_update, False
+        if trigger == "q10_graph" and q10_clickData and q10_clickData.get("points"):
+            return str(q10_clickData["points"][0].get("x")), True
+        return current_selected, current_open
+
     # ---- Q10: Hepar vs Hepeel final difference + plant/animal driver breakdown ----
     @app.callback(
         Output("q10_graph", "figure"),
@@ -1031,27 +1968,28 @@ def build_app() -> Dash:
         Output("q10_table", "data"),
         Output("q10_table", "columns"),
         Output("q10_stats", "children"),
+        Output("q10_card_body", "children"),
+        Output("q10_feature_card", "style"),
         Input("feature_search", "value"),
         Input("only_pubchem", "value"),
         Input("global_intensity_log_range", "value"),
         Input("q10_top_n", "value"),
         Input("q10_diff_log_thr", "value"),
-        Input("q10_graph", "clickData"),
+        Input("q10_selected_feature", "data"),
+        Input("q10_card_open", "data"),
     )
-    def update_q10(feature_search, only_pubchem_vals, global_intensity_log_range, q10_top_n, q10_diff_log_thr, q10_click):
+    def update_q10(feature_search, only_pubchem_vals, global_intensity_log_range, q10_top_n, q10_diff_log_thr, q10_selected_feature, q10_card_open):
         sdf = summary_df.copy()
         sdf["feature"] = sdf["feature"].astype(str)
 
         # final product columns (Hepar vs Hepeel)
         try:
-            hepar_final = _find_col(sdf, HEPAR_FINAL_COL)
-            hepeel_final = _find_col(sdf, HEPEEL_FINAL_COL)
-            hepar_final = _find_col(sdf, HEPAR_FINAL_COL)
-            hepeel_final = _find_col(sdf, HEPEEL_FINAL_COL)
+            hepar_final = _find_col(sdf, Q8_HEPAR_FINAL_COL)
+            hepeel_final = _find_col(sdf, Q8_HEPEEL_FINAL_COL)
         except KeyError as e:
             fig = px.bar(title=f"Q10: Missing final columns ({e})")
             empty = px.bar(title="Q10: click a feature to see breakdown")
-            return fig, empty, [], [], "Q10: missing final product columns"
+            return fig, empty, [], [], "Q10: missing final product columns", html.Div("Click a feature in the chart to open details."), {"display": "none"}
 
         # numeric conversion
         sdf[hepar_final] = pd.to_numeric(sdf[hepar_final], errors="coerce").fillna(0)
@@ -1126,8 +2064,9 @@ def build_app() -> Dash:
             if c in sdf.columns:
                 sdf[c] = pd.to_numeric(sdf[c], errors="coerce").fillna(0)
 
-        if q10_click and "points" in q10_click and q10_click["points"]:
-            f_clicked = str(q10_click["points"][0].get("x"))
+        selected_feature = str(q10_selected_feature) if q10_selected_feature else None
+        if selected_feature:
+            f_clicked = selected_feature
             row = sdf[sdf["feature"] == f_clicked]
             if not row.empty:
                 r = row.iloc[0]
@@ -1164,7 +2103,25 @@ def build_app() -> Dash:
         columns = [{"name": c, "id": c} for c in out_df.columns]
 
         stats = f"Q10 | shown features: {len(out_df):,} | threshold: {thr:g}"
-        return fig, breakdown, out_df.to_dict("records"), columns, stats
+        card_body = html.Div("Click a feature in the chart to open details.")
+        card_style = {"display": "none"}
+        if selected_feature and bool(q10_card_open):
+            rows = sdf[sdf["feature"].astype(str) == selected_feature]
+            if not rows.empty:
+                rr = rows.iloc[0]
+                card_body = html.Div([
+                    html.H4(f"Selected feature: {selected_feature}", style={"margin": "0 0 8px 0"}),
+                    html.Div(f"|Hepar - Hepeel|: {float(rr.get('q10_diff_final', 0.0)):,.0f}"),
+                    html.Div(f"Hepar final intensity: {float(rr.get(hepar_final, 0.0)):,.0f}"),
+                    html.Div(f"Hepeel final intensity: {float(rr.get(hepeel_final, 0.0)):,.0f}"),
+                    html.Div(f"Name: {rr.get('name', 'NA')}"),
+                    html.Div(f"Molecular Formula: {rr.get('molecularFormula', 'NA')}"),
+                    html.Div(["PubChem IDs: ", *render_pubchem_links(rr.get("pubchemids", None))]),
+                    html.Div(f"NPC Pathway: {rr.get('NPC.pathway', 'NA')}"),
+                ])
+                card_style = {"display": "block", "marginTop": "6px"}
+
+        return fig, breakdown, out_df.to_dict("records"), columns, stats, card_body, card_style
 
 
     # ---- Global: sync intensity slider range to selected product ----
