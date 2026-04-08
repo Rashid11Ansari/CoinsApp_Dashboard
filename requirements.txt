@@ -1,59 +1,6 @@
-#' Load Interactome Module UI
-#'
-#' Ui of Interactome loading Module.
-#' Shows dataTable of loaded interactome.
-#'
-#' @param id string namespace id
-#'
-#' @return function for creating shiny ui object
-#' @export
-#'
-#' @examples
-load_interactome_mod_ui <- function(id) {
-  ns <- NS(id)
-
-  print(paste("inner:", ns("Process")))
-
-  tagList(
-    box(
-      width = 12,
-      DT::dataTableOutput(ns("Tab"))
-    )
-  )
-}
-
-#' Load Interactome Module
-#'
-#' Interface for loading an uploaded existing interactome.
-#' The interactome is uploaded and a datatable is rendered.
-#'
-#' @param input shiny input object
-#' @param output shiny output object
-#' @param session shiny session object
-#' @param path path object created by `fileInput()`
-#'
-#' @return df with interactome
-#' @export
-#'
-#' @examples
-load_interactome_mod <- function(input, output, session,
-                                 path) {
-  # load data
-  interactome_raw <- reactive({
-    req(path)
-    message(Sys.time(), " - Loading Existing Interactome")
-
-    vroom(path)
-  })
-
-  # process data
-  interactome_processed <- reactive({
-    interactome_raw()
-  })
-
-  output$Tab <- DT::renderDataTable({
-    interactome_processed()
-  })
-
-  return(interactome_processed)
-}
+dash>=2.15
+plotly>=5.18
+pandas>=2.1
+numpy>=1.26
+openpyxl>=3.1
+requests>=2.31
