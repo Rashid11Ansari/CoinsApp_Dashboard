@@ -625,7 +625,7 @@ button:active {
 }
 
 #analysis_sidebar input::placeholder {
-  color: rgba(226, 232, 240, 0.72);
+  color: rgba(0, 0, 0, 0.72);
 }
 
 /* Choose view dropdown readability across all themes */
@@ -836,4 +836,30 @@ button:active {
     transform: scale(1);
     filter: saturate(1);
   }
+}
+
+/* ===== FIX: Sidebar dropdown value/placeholder must be BLACK (override span rule) ===== */
+
+/* Dash react-select v1 (Select-*) */
+#analysis_sidebar .Select-value-label,
+#analysis_sidebar .Select-placeholder,
+#analysis_sidebar .Select-input > input,
+#analysis_sidebar .Select-value-label span,
+#analysis_sidebar .Select-placeholder span {
+  color: #111827 !important;
+}
+
+/* Dash react-select v2+ (classnames vary) */
+#analysis_sidebar [class*="singleValue"],
+#analysis_sidebar [class*="placeholder"],
+#analysis_sidebar [class*="singleValue"] span,
+#analysis_sidebar [class*="placeholder"] span {
+  color: #111827 !important;
+}
+
+/* Menu options text */
+#analysis_sidebar .Select-menu-outer .Select-option,
+#analysis_sidebar .VirtualizedSelectOption,
+#analysis_sidebar [class*="option"] {
+  color: #111827 !important;
 }
