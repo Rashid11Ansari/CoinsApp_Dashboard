@@ -3,7 +3,7 @@
   source .venv/bin/activate
 
 #Install dependencies
-  pip install -r requirements.txt
+  python -m pip install -r requirements.txt
 
 #Run the Dashboard
   Python app.py
