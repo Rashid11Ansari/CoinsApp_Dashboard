@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import math
 
 
 import pandas as pd
@@ -544,6 +545,102 @@ def build_app() -> Dash:
         {"label": "Common (plant+animal components)", "value": "Common (plant+animal)"},
     ]
     app.layout = build_layout(APP_TITLE, origin_options)
+
+    # ---- Global: sync NEW linear intensity slider/inputs and BRIDGE to legacy log10 slider ----
+    @app.callback(
+        Output("global_intensity_range", "value"),
+        Output("global_intensity_min", "value"),
+        Output("global_intensity_max", "value"),
+        Output("global_intensity_range_label", "children"),
+        Output("global_intensity_log_range", "value"),
+        Input("global_intensity_range", "value"),
+        Input("global_intensity_min", "value"),
+        Input("global_intensity_max", "value"),
+        Input("product", "value"),
+    )
+    def sync_global_intensity_linear_to_log(range_val, min_val, max_val, product):
+        # defaults
+        default_lo, default_hi = 1000.0, 50000.0
+
+        # normalize product (Dash may pass list)
+        if isinstance(product, (list, tuple)):
+            product = product[0] if product else "Hepar"
+        if not product:
+            product = "Hepar"
+
+        # start from slider range
+        lo = default_lo
+        hi = default_hi
+        if isinstance(range_val, (list, tuple)) and len(range_val) == 2:
+            lo = float(range_val[0]) if range_val[0] is not None else lo
+            hi = float(range_val[1]) if range_val[1] is not None else hi
+
+        # determine which input triggered
+        trig = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else ""
+
+        # if user typed min/max, update lo/hi
+        if trig == "global_intensity_min" and min_val is not None:
+            lo = float(min_val)
+        if trig == "global_intensity_max" and max_val is not None:
+            hi = float(max_val)
+
+        # ensure sane bounds
+        if lo < 0:
+            lo = 0.0
+        if hi < 0:
+            hi = 0.0
+        if lo > hi:
+            lo, hi = hi, lo
+
+        # label for UI
+        label = f"Showing features with product intensity between {lo:,.0f} and {hi:,.0f}"
+
+        # bridge to legacy log10 slider used throughout the app
+        lo_for_log = max(lo, 1e-9)  # avoid log10(0)
+        hi_for_log = max(hi, 1e-9)
+        log_lo = math.log10(lo_for_log)
+        log_hi = math.log10(hi_for_log)
+
+        # old slider was 2..7; clamp so existing code doesn't break
+        log_lo = max(2.0, min(7.0, log_lo))
+        log_hi = max(2.0, min(7.0, log_hi))
+        if log_lo > log_hi:
+            log_lo, log_hi = log_hi, log_lo
+
+        return [lo, hi], lo, hi, label, [log_lo, log_hi]
+    # ---- Q10: sync linear Δ_final threshold (slider+input) to legacy log threshold ----
+    @app.callback(
+        Output("q10_diff_thr_slider", "value"),
+        Output("q10_diff_thr_value", "value"),
+        Output("q10_diff_log_thr", "value"),
+        Input("q10_diff_thr_slider", "value"),
+        Input("q10_diff_thr_value", "value"),
+    )
+    def sync_q10_threshold_linear_to_log(slider_val, box_val):
+        # Which input triggered?
+        trig = callback_context.triggered[0]["prop_id"].split(".")[0] if callback_context.triggered else ""
+
+        # Default threshold (linear)
+        thr = 5000.0
+
+        # If user typed in the box, use that; otherwise slider
+        if trig == "q10_diff_thr_value" and box_val is not None:
+            thr = float(box_val)
+        elif slider_val is not None:
+            thr = float(slider_val)
+
+        if thr < 0:
+            thr = 0.0
+
+        # Convert to log10 threshold used by existing Q10 logic
+        thr_for_log = max(thr, 1e-9)  # avoid log10(0)
+        log_thr = math.log10(thr_for_log)
+
+        # Clamp to existing Q10 log slider range (your layout uses -2..8)
+        log_thr = max(-2.0, min(8.0, log_thr))
+
+        return thr, thr, log_thr
+
     # ---- Navigation: show/hide views and set origin_filter ----
     @app.callback(
         Output("app_root", "style"),
@@ -2123,44 +2220,6 @@ def build_app() -> Dash:
 
         return fig, breakdown, out_df.to_dict("records"), columns, stats, card_body, card_style
 
-
-    # ---- Global: sync intensity slider range to selected product ----
-    @app.callback(
-        Output("global_intensity_log_range", "min"),
-        Output("global_intensity_log_range", "max"),
-        Output("global_intensity_log_range", "value"),
-        Output("global_intensity_log_range", "marks"),
-        Output("global_intensity_range_label", "children"),
-        Input("product", "value"),
-    )
-    def sync_global_intensity_slider(product: str):
-        prod_df = data[product].features
-
-        if "intensity" not in prod_df.columns or prod_df["intensity"].dropna().empty:
-            return 0, 1, [0, 1], {}, ""
-
-        # clamp min to 1 to avoid log10(0)
-        mx = float(prod_df["intensity"].max())
-        mx = max(1.0, mx)
-
-        log_min = 0.0  # log10(1)
-        log_max = float(np.ceil(np.log10(mx)))
-
-        # marks at powers of 10
-        marks: dict[float, str] = {}
-        for i in range(int(log_min), int(log_max) + 1):
-            val = 10 ** i
-            if val >= 1_000_000:
-                lab = f"{int(val/1_000_000)}M"
-            elif val >= 1_000:
-                lab = f"{int(val/1_000)}k"
-            else:
-                lab = f"{int(val)}"
-            marks[float(i)] = lab
-
-        label = f"Intensity filter (log10): 10^{log_min:.0f} to 10^{log_max:.0f}"
-        return log_min, log_max, [log_min, log_max], marks, label
-
     # ---- Explore: main scatter/bar for selected product and origin subset ----
     @app.callback(
         Output("main_graph", "figure"),
@@ -2251,8 +2310,15 @@ def build_app() -> Dash:
         Input("q4_max_rows", "value"),
         Input("feature_search", "value"),
         Input("only_pubchem", "value"),
+        Input("global_intensity_log_range", "value"),
     )
-    def update_q4_table(product, q4_source, q4_presence_log_thr, q4_max_rows, feature_search, only_pubchem_vals):
+    def update_q4_table(product, q4_source, q4_presence_log_thr, q4_max_rows, feature_search, only_pubchem_vals, global_intensity_log_range):
+    # Robustness: some Dash components may pass product as a list/tuple
+        if isinstance(product, (list, tuple)):
+            product = product[0] if len(product) > 0 else "Hepar"
+        if not product:
+            product = "Hepar"
+
         prod_df = data[product].features.copy()
         prod_df["feature"] = prod_df["feature"].astype(str)
         prod_ids = set(prod_df["feature"].dropna().astype(str))
@@ -2261,6 +2327,15 @@ def build_app() -> Dash:
         presence_thr = 10 ** thr_log
 
         df = build_component_only_df(product, prod_ids, summary_df, groups, presence_thr=presence_thr)
+
+        # ✅ Global intensity range filter (use product feature list intensities)
+        if global_intensity_log_range and "intensity" in prod_df.columns and not prod_df.empty:
+            log_lo, log_hi = map(float, global_intensity_log_range)
+            lo = 10 ** log_lo
+            hi = 10 ** log_hi
+            df["max_component_intensity"] = pd.to_numeric(df["max_component_intensity"], errors="coerce").fillna(0)
+            df = df[df["max_component_intensity"].between(lo, hi, inclusive="both")].copy()
+
         # filter by source
         if q4_source and q4_source != "all" and "source" in df.columns:
             df = df[df["source"] == q4_source].copy()
@@ -2281,7 +2356,11 @@ def build_app() -> Dash:
         df = df.head(max_rows)
 
         cols = [{"name": c, "id": c} for c in df.columns]
-        stats = f"Q4 | rows shown: {len(df):,} | presence_thr=10^{thr_log:.2f}"
+        if global_intensity_log_range:
+            log_lo, log_hi = map(float, global_intensity_log_range)
+            stats = f"Q4 | rows shown: {len(df):,} | presence_thr=10^{thr_log:.2f} | global=10^{log_lo:.2f}..10^{log_hi:.2f} (component max)"
+        else:
+            stats = f"Q4 | rows shown: {len(df):,} | presence_thr=10^{thr_log:.2f}"
         return df.to_dict("records"), cols, stats
     # ---- Q5: Product-only feature table (present in product, missing in components) ----
     @app.callback(

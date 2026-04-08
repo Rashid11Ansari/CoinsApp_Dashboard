@@ -108,8 +108,66 @@ def build_layout(app_title: str, origin_options: list[dict]):
                             dcc.Checklist(id="global_use_log", options=[{"label": "Use log10(intensity)", "value": "log"}], value=["log"]),
                             html.Div(style={"height": "12px"}),
                             html.Label("Product intensity filter (global)"),
-                            dcc.RangeSlider(id="global_intensity_log_range", min=2, max=7, step=0.3, value=[2, 7], marks={}, tooltip={"placement": "bottom", "always_visible": False}),
-                            html.Div(id="global_intensity_range_label", style={"fontSize": "12px", "color": "#666", "marginTop": "6px"}),
+                            # --- New (user-friendly) global intensity filter (linear values) ---
+                            html.Div(
+                                style={"display": "flex", "gap": "8px", "alignItems": "center", "marginBottom": "8px"},
+                                children=[
+                                    dcc.Input(
+                                        id="global_intensity_min",
+                                        type="number",
+                                        value=1000,
+                                        min=0,
+                                        step=100,
+                                        style={"width": "120px"},
+                                    ),
+                                    dcc.Input(
+                                        id="global_intensity_max",
+                                        type="number",
+                                        value=50000,
+                                        min=0,
+                                        step=100,
+                                        style={"width": "120px"},
+                                    ),
+                                ],
+                            ),
+                            dcc.RangeSlider(
+                                id="global_intensity_range",
+                                min=0,
+                                max=100000,
+                                step=100,
+                                value=[1000, 50000],
+                                marks={
+                                    0: "0",
+                                    1000: "1k",
+                                    2000: "2k",
+                                    5000: "5k",
+                                    10000: "10k",
+                                    20000: "20k",
+                                    50000: "50k",
+                                    100000: "100k",
+                                },
+                                tooltip={"placement": "bottom", "always_visible": False},
+                            ),
+                            html.Div(
+                                id="global_intensity_range_label",
+                                style={"fontSize": "12px", "color": "#666", "marginTop": "6px"},
+                            ),
+
+                            # --- Old (log10) slider kept hidden until app.py is migrated ---
+                            html.Div(
+                                style={"display": "none"},
+                                children=[
+                                    dcc.RangeSlider(
+                                        id="global_intensity_log_range",
+                                        min=2,
+                                        max=7,
+                                        step=0.3,
+                                        value=[2, 7],
+                                        marks={},
+                                        tooltip={"placement": "bottom", "always_visible": False},
+                                    )
+                                ],
+                            ),
                             html.Hr(),
                             html.H4("Navigation", style={"marginBottom": "6px"}),
                             html.Label("Choose view"),
@@ -147,37 +205,6 @@ def build_layout(app_title: str, origin_options: list[dict]):
                 className="main-content-shell",
                 style=MAIN,
                 children=[
-                    html.Div(
-                        id="analysis_chem_bg",
-                        className="analysis-chem-bg",
-                        style={"display": "none"},
-                        children=[
-                            html.Span("C=C", className="analysis-chem-particle", style={"left": "7%", "top": "12%", "fontSize": "18px", "animationDuration": "14s", "animationDelay": "-2s"}),
-                            html.Span("N-H", className="analysis-chem-particle", style={"left": "18%", "top": "62%", "fontSize": "15px", "animationDuration": "12s", "animationDelay": "-5s"}),
-                            html.Span("O=C=O", className="analysis-chem-particle", style={"left": "33%", "top": "32%", "fontSize": "16px", "animationDuration": "13s", "animationDelay": "-7s"}),
-                            html.Span("C-C-C", className="analysis-chem-particle", style={"left": "47%", "top": "70%", "fontSize": "17px", "animationDuration": "15s", "animationDelay": "-1s"}),
-                            html.Span("H-O-H", className="analysis-chem-particle", style={"left": "61%", "top": "24%", "fontSize": "16px", "animationDuration": "11s", "animationDelay": "-4s"}),
-                            html.Span("C-N", className="analysis-chem-particle", style={"left": "75%", "top": "56%", "fontSize": "18px", "animationDuration": "10s", "animationDelay": "-6s"}),
-                            html.Span("O-H", className="analysis-chem-particle", style={"left": "88%", "top": "20%", "fontSize": "15px", "animationDuration": "12s", "animationDelay": "-8s"}),
-                            html.Span("H-N-H", className="analysis-chem-particle", style={"left": "84%", "top": "84%", "fontSize": "14px", "animationDuration": "16s", "animationDelay": "-3s"}),
-                            html.Span("C#N", className="analysis-chem-particle", style={"left": "11%", "top": "84%", "fontSize": "16px", "animationDuration": "18s", "animationDelay": "-9s"}),
-                            html.Span("N=C=O", className="analysis-chem-particle", style={"left": "26%", "top": "10%", "fontSize": "14px", "animationDuration": "20s", "animationDelay": "-11s"}),
-                            html.Span("C-O-C", className="analysis-chem-particle", style={"left": "39%", "top": "86%", "fontSize": "15px", "animationDuration": "17s", "animationDelay": "-13s"}),
-                            html.Span("C-H", className="analysis-chem-particle", style={"left": "52%", "top": "14%", "fontSize": "15px", "animationDuration": "19s", "animationDelay": "-15s"}),
-                            html.Span("N-O", className="analysis-chem-particle", style={"left": "67%", "top": "88%", "fontSize": "14px", "animationDuration": "21s", "animationDelay": "-4s"}),
-                            html.Span("C=C-C", className="analysis-chem-particle", style={"left": "92%", "top": "68%", "fontSize": "16px", "animationDuration": "22s", "animationDelay": "-6s"}),
-                            html.Span("C=C", className="analysis-chem-particle", style={"left": "14%", "top": "42%", "fontSize": "17px", "animationDuration": "23s", "animationDelay": "-10s"}),
-                            html.Span("N-H", className="analysis-chem-particle", style={"left": "22%", "top": "76%", "fontSize": "15px", "animationDuration": "18s", "animationDelay": "-12s"}),
-                            html.Span("O-H", className="analysis-chem-particle", style={"left": "36%", "top": "18%", "fontSize": "14px", "animationDuration": "24s", "animationDelay": "-14s"}),
-                            html.Span("C-N", className="analysis-chem-particle", style={"left": "49%", "top": "48%", "fontSize": "16px", "animationDuration": "20s", "animationDelay": "-16s"}),
-                            html.Span("H-O-H", className="analysis-chem-particle", style={"left": "58%", "top": "80%", "fontSize": "15px", "animationDuration": "19s", "animationDelay": "-18s"}),
-                            html.Span("C#N", className="analysis-chem-particle", style={"left": "69%", "top": "36%", "fontSize": "14px", "animationDuration": "21s", "animationDelay": "-20s"}),
-                            html.Span("N=C=O", className="analysis-chem-particle", style={"left": "79%", "top": "14%", "fontSize": "16px", "animationDuration": "22s", "animationDelay": "-9s"}),
-                            html.Span("C-O-C", className="analysis-chem-particle", style={"left": "86%", "top": "44%", "fontSize": "15px", "animationDuration": "25s", "animationDelay": "-7s"}),
-                            html.Span("C-H", className="analysis-chem-particle", style={"left": "8%", "top": "62%", "fontSize": "14px", "animationDuration": "20s", "animationDelay": "-5s"}),
-                            html.Span("C=C-C", className="analysis-chem-particle", style={"left": "94%", "top": "86%", "fontSize": "16px", "animationDuration": "23s", "animationDelay": "-3s"}),
-                        ],
-                    ),
                     # ---------- Home / Landing view ----------
                     html.Div(
                         id="view_home",
@@ -492,24 +519,11 @@ def build_layout(app_title: str, origin_options: list[dict]):
                                 ],
                             ),
                             html.Div(
-                                className="chem-footer",
-                                children=[
-                                    html.Span("C=C", className="chem-particle", style={"left": "6%", "top": "20%", "fontSize": "20px", "animationDuration": "14s", "animationDelay": "-2s", "color": "rgba(147,197,253,0.55)"}),
-                                    html.Span("N-H", className="chem-particle", style={"left": "18%", "top": "52%", "fontSize": "16px", "animationDuration": "12s", "animationDelay": "-5s", "color": "rgba(167,243,208,0.55)"}),
-                                    html.Span("O=C=O", className="chem-particle", style={"left": "30%", "top": "30%", "fontSize": "15px", "animationDuration": "13s", "animationDelay": "-8s", "color": "rgba(251,191,36,0.55)"}),
-                                    html.Span("C-C-C", className="chem-particle", style={"left": "44%", "top": "64%", "fontSize": "18px", "animationDuration": "15s", "animationDelay": "-1s", "color": "rgba(96,165,250,0.55)"}),
-                                    html.Span("H-O-H", className="chem-particle", style={"left": "58%", "top": "26%", "fontSize": "16px", "animationDuration": "11s", "animationDelay": "-4s", "color": "rgba(45,212,191,0.55)"}),
-                                    html.Span("C-N", className="chem-particle", style={"left": "72%", "top": "56%", "fontSize": "18px", "animationDuration": "10s", "animationDelay": "-7s", "color": "rgba(165,180,252,0.55)"}),
-                                    html.Span("O-H", className="chem-particle", style={"left": "86%", "top": "20%", "fontSize": "15px", "animationDuration": "12s", "animationDelay": "-6s", "color": "rgba(251,113,133,0.55)"}),
-                                    html.Span("H-N-H", className="chem-particle", style={"left": "80%", "top": "78%", "fontSize": "14px", "animationDuration": "16s", "animationDelay": "-3s", "color": "rgba(147,197,253,0.55)"}),
-                                ],
-                            ),
-                            html.Div(
                                 id="home_theme_selector",
                                 style={
                                     "position": "absolute",
                                     "left": "16px",
-                                    "bottom": "36px",
+                                    "bottom": "0px",
                                     "zIndex": 4,
                                     "display": "flex",
                                     "gap": "6px",
@@ -1274,18 +1288,51 @@ def build_layout(app_title: str, origin_options: list[dict]):
                             html.Div(id="q10_stats", style={"marginTop": "10px", "fontSize": "14px"}),
 
                             dcc.Graph(id="q10_graph", style={"height": "420px"}),
-                            # Move threshold slider between the two graphs
+                            # ---- NEW: user-friendly threshold (linear) ----
                             html.Div(
-                                style={"minWidth": "320px"},
+                                style={"minWidth": "360px"},
                                 children=[
-                                    html.Label("Significance threshold (log10 |Hepar_final − Hepeel_final|)"),
+                                    html.Label("Significance threshold (|Hepar_final - Hepeel_final|)"),
+
+                                    # number box
+                                    html.Div(
+                                        style={"display": "flex", "gap": "8px", "alignItems": "center", "marginBottom": "8px"},
+                                        children=[
+                                            dcc.Input(
+                                                id="q10_diff_thr_value",
+                                                type="number",
+                                                value=5000,
+                                                min=0,
+                                                step=100,
+                                                style={"width": "160px"},
+                                            ),
+                                        ],
+                                    ),
+
+                                    # linear slider
                                     dcc.Slider(
-                                        id="q10_diff_log_thr",
-                                        min=-2,
-                                        max=8,
-                                        step=0.25,
-                                        value=0,  # 10^0 = 1
-                                        marks={-2: "1e-2", 0: "1", 2: "1e2", 4: "1e4", 6: "1e6", 8: "1e8"},
+                                        id="q10_diff_thr_slider",
+                                        min=0,
+                                        max=100000,
+                                        step=100,
+                                        value=5000,
+                                        marks={0: "0", 1000: "1k", 5000: "5k", 10000: "10k", 50000: "50k", 100000: "100k"},
+                                        tooltip={"placement": "bottom", "always_visible": False},
+                                    ),
+
+                                    # keep legacy log slider hidden (IMPORTANT: keep same id used by Q10 backend)
+                                    html.Div(
+                                        style={"display": "none"},
+                                        children=[
+                                            dcc.Slider(
+                                                id="q10_diff_log_thr",   # <-- same ID as your existing code
+                                                min=-2,
+                                                max=8,
+                                                step=0.25,
+                                                value=0,
+                                                marks={},
+                                            )
+                                        ],
                                     ),
                                 ],
                             ),
